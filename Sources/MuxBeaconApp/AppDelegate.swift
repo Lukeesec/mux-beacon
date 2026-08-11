@@ -6,11 +6,12 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var previewWindow: NSWindow?
+    private var inboxRequestTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        let open = UNNotificationAction(identifier: "OPEN", title: "Open", options: [.foreground])
+        let open = UNNotificationAction(identifier: "OPEN", title: "Open in Ghostty", options: [.foreground])
         let acknowledge = UNNotificationAction(identifier: "ACKNOWLEDGE", title: "Acknowledge")
         center.setNotificationCategories([
             UNNotificationCategory(
@@ -36,13 +37,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
         }
 
+        inboxRequestTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.consumeInboxRequest() }
+        }
+
         if CommandLine.arguments.contains("--screenshot") || ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_MODE"] == "1" {
             showPreviewWindow()
+        } else if !CommandLine.arguments.contains("--background") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.showPreviewWindow()
+            }
         }
+        consumeInboxRequest()
+    }
+
+    func openInboxWindow() {
+        showPreviewWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openInboxWindow()
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    private func consumeInboxRequest() {
+        guard FileManager.default.fileExists(atPath: BeaconPaths.inboxRequest.path) else { return }
+        try? FileManager.default.removeItem(at: BeaconPaths.inboxRequest)
+        showPreviewWindow()
     }
 
     private func showPreviewWindow() {
-        let model = BeaconAppModel()
+        if let previewWindow {
+            previewWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let model = BeaconAppModel.shared
         let settingsMode = ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_VIEW"] == "settings"
         let size = settingsMode ? NSSize(width: 520, height: 520) : NSSize(width: 450, height: 620)
         let rootView = settingsMode
@@ -86,19 +120,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "muxbeacon" && url.host == "event" {
-            let eventID = url.pathComponents.dropFirst().joined(separator: "/")
-                .removingPercentEncoding ?? ""
-            guard !eventID.isEmpty else { continue }
-            do {
-                let store = EventStore()
-                guard let event = try store.fetch(id: eventID) else { continue }
-                try TargetRouter.jump(to: event)
-                try store.acknowledge(id: eventID)
-                EventBroadcaster.post(eventID: eventID)
-            } catch {
-                BeaconLog.write("deep link failed: \(error.localizedDescription)")
-            }
+        for url in urls { handle(url: url) }
+    }
+
+    private func handle(url: URL) {
+        guard url.scheme == "muxbeacon" else { return }
+        if url.host == "inbox" {
+            showPreviewWindow()
+            return
+        }
+        guard url.host == "event" else { return }
+        let eventID = url.pathComponents.dropFirst().joined(separator: "/")
+            .removingPercentEncoding ?? ""
+        guard !eventID.isEmpty else { return }
+        do {
+            let store = EventStore()
+            guard let event = try store.fetch(id: eventID) else { return }
+            try TargetRouter.jump(to: event)
+            try store.acknowledge(id: eventID)
+            EventBroadcaster.post(eventID: eventID)
+        } catch {
+            BeaconLog.write("deep link failed: \(error.localizedDescription)")
         }
     }
 

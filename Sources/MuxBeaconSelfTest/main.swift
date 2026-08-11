@@ -7,7 +7,7 @@ struct MuxBeaconSelfTest {
         let tests: [(String, () throws -> Void)] = [
             ("Codex UserPromptSubmit fixture", testCodexStart),
             ("Claude background Stop fixture", testClaudeBackground),
-            ("Permission notifications default off", testPermissionDefault),
+            ("Start and permission notifications default off", testNotificationDefaults),
             ("Turn persistence and duration", testStoreFlow),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
@@ -43,12 +43,12 @@ struct MuxBeaconSelfTest {
         try expect(event.state == .background && event.hasBackgroundWork)
     }
 
-    private static func testPermissionDefault() throws {
+    private static func testNotificationDefaults() throws {
         let suite = "MuxBeaconSelfTest.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = BeaconPreferences(defaults: defaults)
-        try expect(preferences.notifyOnStart && !preferences.notifyOnAttention)
+        try expect(!preferences.notifyOnStart && preferences.notifyOnReady && !preferences.notifyOnAttention && preferences.notifyOnFailure)
     }
 
     private static func testStoreFlow() throws {

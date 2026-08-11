@@ -1,3 +1,5 @@
+<img src="Assets/MuxBeaconIcon-1024.png" width="112" alt="Mux Beacon app icon" align="right">
+
 # Mux Beacon
 
 Know when terminal agents need you—and get back to the exact tmux target.
@@ -15,9 +17,9 @@ prompt submitted → working → ready / failed
                          └→ needs attention (optional)
 ```
 
-- `UserPromptSubmit` is visible immediately and sends a **started** notification by default.
+- `UserPromptSubmit` records the start immediately; its notification is opt-in to avoid noise.
 - Completion and failure notifications contain agent, project, duration, and `session › window › pane`.
-- Clicking **Open** targets the originating tmux client and focuses the captured Ghostty terminal.
+- Clicking **Open in Ghostty** targets the originating tmux client and focuses the captured Ghostty terminal.
 - **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
 - `PermissionRequest` is supported but its notification is off by default.
 - Prompts, commands, and final answers are not stored unless previews are explicitly enabled.
@@ -39,6 +41,8 @@ mux-beacon install
 mux-beacon install --apply
 ```
 
+The app installs into `/Applications` when writable, otherwise `~/Applications`, and registers with Launch Services. Finder can open it directly; `mux-beacon gui` is the reliable launcher for local ad-hoc builds that Spotlight has not indexed yet.
+
 The first `install` is a dry run. Applying the installation:
 
 - adds owned handlers to `~/.claude/settings.json`;
@@ -54,13 +58,22 @@ Permission events are deferred by default. Users who want them can install the a
 mux-beacon install --apply --with-permission-events
 ```
 
-Allow notifications when macOS prompts. To enable exact Ghostty focus, allow Mux Beacon to automate Ghostty under **System Settings → Privacy & Security → Automation**.
+Allow notifications when macOS prompts. In **System Settings → Notifications → Mux Beacon**, choose **Alerts** instead of **Banners** if notifications should remain until dismissed; macOS owns this setting, so apps cannot enforce it. To enable exact Ghostty focus, allow Mux Beacon to automate Ghostty under **System Settings → Privacy & Security → Automation**.
+
+## Open the GUI
+
+Mux Beacon is primarily a menu-bar app. Click its beacon icon in the macOS menu bar, open it from Finder or Spotlight when indexed, or run:
+
+```sh
+mux-beacon gui
+```
+
+Launching the app directly opens a standalone inbox window. Background hook launches remain unobtrusive.
 
 ## Try it without touching hook configuration
 
 ```sh
 mux-beacon demo
-mux-beacon test start --source codex
 mux-beacon test ready --source codex
 mux-beacon status
 ```
@@ -69,13 +82,37 @@ The app and demo require no tmux restart. Hooks may require a new or reloaded ag
 
 ## Notification content
 
-![Example Mux Beacon notification showing agent, project, duration, tmux target, Open, and Acknowledge](docs/assets/notification-preview.svg)
+![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
-macOS controls final banner layout, truncation, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+macOS renders the project and state as the bold title, with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
 
 ## Defaults
 
 ![Mux Beacon notification and privacy settings](docs/assets/mux-beacon-settings.png)
+
+Completion and failure alerts are on. Start and permission alerts are off. Change them in the GUI or from the CLI:
+
+```sh
+mux-beacon notifications status
+mux-beacon notifications start on
+mux-beacon notifications start off
+mux-beacon notifications all off
+```
+
+## Disable or remove Mux Beacon
+
+Choose the level you want:
+
+```sh
+# Silence every notification but keep recording turns in the inbox
+mux-beacon notifications all off
+
+# Stop collecting new events by removing only Mux Beacon's agent hooks
+mux-beacon uninstall --apply
+
+# Remove hooks and move the app to Trash; local history is retained
+./scripts/uninstall-local.sh
+```
 
 ## tmux views
 
@@ -108,6 +145,8 @@ The core exposes `TimeExportProvider` and `TimeEntryDraft` so a Clockify adapter
 |---|---|
 | `mux-beacon doctor` | Check app, hooks, tmux, Ghostty, and local storage |
 | `mux-beacon status` | Show recent activity in the terminal |
+| `mux-beacon gui` | Open the native inbox window |
+| `mux-beacon notifications …` | Inspect or change alert preferences |
 | `mux-beacon jump-last` | Open the newest unread event |
 | `mux-beacon demo` / `clear-demo` | Add or remove anonymized sample data |
 | `mux-beacon uninstall --apply` | Remove only Mux Beacon's hook handlers |

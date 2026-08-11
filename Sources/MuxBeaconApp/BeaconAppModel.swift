@@ -5,6 +5,8 @@ import MuxBeaconCore
 
 @MainActor
 final class BeaconAppModel: ObservableObject {
+    static let shared = BeaconAppModel()
+
     @Published private(set) var events: [AgentEvent] = []
     @Published var lastError: String?
 
@@ -103,22 +105,26 @@ final class BeaconAppModel: ObservableObject {
         guard !event.acknowledged, preferences.shouldNotify(for: event.state), notificationTracker.begin(key) else { return }
 
         let content = UNMutableNotificationContent()
+        let stateLabel: String
         switch event.state {
-        case .working: content.title = "\(event.source.displayName) started"
-        case .needsAttention: content.title = "\(event.source.displayName) needs attention"
-        case .background: content.title = "\(event.source.displayName) scheduled background work"
-        case .ready: content.title = "\(event.source.displayName) ready"
-        case .failed: content.title = "\(event.source.displayName) failed"
+        case .working: stateLabel = "Started"
+        case .needsAttention: stateLabel = "Needs attention"
+        case .background: stateLabel = "Background work"
+        case .ready: stateLabel = "Ready"
+        case .failed: stateLabel = "Failed"
         case .stale: return
         }
+        content.title = "\(event.projectName) — \(stateLabel)"
         content.subtitle = event.state == .working
-            ? event.projectName
-            : "\(event.projectName) · \(event.durationLabel)"
+            ? event.source.displayName
+            : "\(event.source.displayName) · \(event.durationLabel)"
         content.body = preferences.storePreviews
             ? [event.routeLabel, event.preview].compactMap { $0 }.joined(separator: "\n")
             : event.routeLabel
         content.categoryIdentifier = "AGENT_EVENT"
         content.threadIdentifier = "\(event.source.rawValue):\(event.sessionID)"
+        content.summaryArgument = event.projectName
+        content.targetContentIdentifier = event.id
         content.userInfo = ["eventID": event.id]
         if preferences.notificationSound { content.sound = .default }
 

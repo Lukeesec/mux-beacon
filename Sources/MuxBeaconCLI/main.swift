@@ -36,12 +36,16 @@ struct MuxBeaconCLI {
                 try export(Array(arguments.dropFirst()))
             case "tmux":
                 try tmux(Array(arguments.dropFirst()))
+            case "notifications", "notification":
+                try notifications(Array(arguments.dropFirst()))
+            case "gui", "open":
+                try AppLauncher.openGUI()
             case "tui":
                 try tui()
             case "help", "--help", "-h":
                 printHelp()
             case "version", "--version", "-v":
-                print("mux-beacon 0.1.0")
+                print("mux-beacon 0.2.0")
             default:
                 throw CLIError.usage("Unknown command: \(command)")
             }
@@ -200,6 +204,45 @@ struct MuxBeaconCLI {
         }
     }
 
+    private static func notifications(_ arguments: [String]) throws {
+        let preferences = BeaconPreferences.shared
+        guard let target = arguments.first, target != "status" else {
+            print("Mux Beacon notifications")
+            print("  start:      \(preferences.notifyOnStart ? "on" : "off")")
+            print("  completion: \(preferences.notifyOnReady ? "on" : "off")")
+            print("  permission: \(preferences.notifyOnAttention ? "on" : "off")")
+            print("  failure:    \(preferences.notifyOnFailure ? "on" : "off")")
+            print("  sound:      \(preferences.notificationSound ? "on" : "off")")
+            return
+        }
+        guard arguments.count > 1, let enabled = parseToggle(arguments[1]) else {
+            throw CLIError.usage("notifications expects <start|completion|permission|failure|sound|all> <on|off>")
+        }
+        switch target {
+        case "start": preferences.notifyOnStart = enabled
+        case "completion", "ready": preferences.notifyOnReady = enabled
+        case "permission", "attention": preferences.notifyOnAttention = enabled
+        case "failure", "failed": preferences.notifyOnFailure = enabled
+        case "sound": preferences.notificationSound = enabled
+        case "all":
+            preferences.notifyOnStart = enabled
+            preferences.notifyOnReady = enabled
+            preferences.notifyOnAttention = enabled
+            preferences.notifyOnFailure = enabled
+        default:
+            throw CLIError.usage("unknown notification target: \(target)")
+        }
+        print("Set \(target) notifications \(enabled ? "on" : "off").")
+    }
+
+    private static func parseToggle(_ value: String) -> Bool? {
+        switch value.lowercased() {
+        case "on", "true", "yes", "1": true
+        case "off", "false", "no", "0": false
+        default: nil
+        }
+    }
+
     private static func tui() throws {
         let events = try EventStore().fetchEvents(limit: 20)
         print("\n  MUX BEACON\n  Agent activity across tmux\n")
@@ -235,14 +278,18 @@ struct MuxBeaconCLI {
           mux-beacon uninstall [--apply]     Preview or remove only owned hooks
           mux-beacon doctor                  Check integrations and local state
           mux-beacon status                  List recent agent activity
+          mux-beacon gui                     Open the native inbox window
+          mux-beacon notifications status    Show notification preferences
+          mux-beacon notifications <type> on|off
+                                              Change start/completion/permission/failure/all
           mux-beacon test <state>            Send start/ready/attention/failed test event
           mux-beacon demo                    Seed anonymized UI demo data
           mux-beacon jump-last               Open the newest unread agent
           mux-beacon export --format json|csv [--output PATH]
           mux-beacon tmux popup|enable-badges|disable-badges
 
-        UserPromptSubmit notifications are enabled by default. PermissionRequest
-        notifications are supported but off by default in Mux Beacon settings.
+        Completion and failure notifications are enabled by default. Start and
+        PermissionRequest notifications are off by default.
         """)
     }
 }
@@ -255,7 +302,33 @@ private enum CLIError: LocalizedError {
 }
 
 private enum AppLauncher {
+    static func openGUI() throws {
+        guard let app = applicationPath() else { throw AppLauncherError.notInstalled }
+        try BeaconPaths.ensureDirectories()
+        try Data("open\n".utf8).write(to: BeaconPaths.inboxRequest, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: BeaconPaths.inboxRequest.path)
+        do {
+            for _ in 0..<3 {
+                let result = try ProcessRunner.run("/usr/bin/open", ["-gj", app, "--args", "--background"])
+                guard result.status == 0 else { throw AppLauncherError.openFailed(result.stderr) }
+                for _ in 0..<10 {
+                    if !FileManager.default.fileExists(atPath: BeaconPaths.inboxRequest.path) { return }
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+            throw AppLauncherError.openFailed("the app did not acknowledge the open request")
+        } catch {
+            try? FileManager.default.removeItem(at: BeaconPaths.inboxRequest)
+            throw error
+        }
+    }
+
     static func launchIfAvailable() {
+        guard let app = applicationPath() else { return }
+        _ = try? ProcessRunner.run("/usr/bin/open", ["-gj", app, "--args", "--background"])
+    }
+
+    private static func applicationPath() -> String? {
         let environment = ProcessInfo.processInfo.environment
         var candidates: [String] = []
         if let override = environment["MUX_BEACON_APP_PATH"] { candidates.append(override) }
@@ -264,11 +337,22 @@ private enum AppLauncher {
             candidates.append(executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path)
         }
         candidates += [
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Mux Beacon.app").path,
             "/Applications/Mux Beacon.app",
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Mux Beacon.app").path,
             FileManager.default.currentDirectoryPath + "/dist/Mux Beacon.app",
         ]
-        guard let app = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else { return }
-        _ = try? ProcessRunner.run("/usr/bin/open", ["-gj", app])
+        return candidates.first(where: { FileManager.default.fileExists(atPath: $0) })
+    }
+}
+
+private enum AppLauncherError: LocalizedError {
+    case notInstalled
+    case openFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notInstalled: "Mux Beacon.app was not found. Run scripts/install-local.sh first."
+        case .openFailed(let detail): "Could not open Mux Beacon: \(detail)"
+        }
     }
 }

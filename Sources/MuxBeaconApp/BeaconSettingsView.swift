@@ -5,7 +5,7 @@ import SwiftUI
 import UserNotifications
 
 struct BeaconSettingsView: View {
-    @AppStorage("notifyOnStart", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnStart = true
+    @AppStorage("notifyOnStart", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnStart = false
     @AppStorage("notifyOnReady", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnReady = true
     @AppStorage("notifyOnAttention", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnAttention = false
     @AppStorage("notifyOnFailure", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnFailure = true
@@ -23,9 +23,13 @@ struct BeaconSettingsView: View {
                 Toggle("Permission requested", isOn: $notifyOnAttention)
                 Toggle("Turn failed", isOn: $notifyOnFailure)
                 Toggle("Play sound", isOn: $notificationSound)
-                Text("Permission notifications are optional. Install their hooks with mux-beacon install --apply --with-permission-events.")
+                Text("Start and permission alerts are off by default. Permission alerts also require mux-beacon install --apply --with-permission-events.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("For notifications that remain until dismissed, choose Alerts—not Banners—in macOS Notification Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Open Notification Settings") { openNotificationSettings() }
             }
 
             Section("Privacy") {
@@ -54,11 +58,6 @@ struct BeaconSettingsView: View {
                     set: setLaunchAtLogin
                 ))
                 Button("Open data folder") { NSWorkspace.shared.open(BeaconPaths.home) }
-                Button("Open Notification Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
             }
         }
         .formStyle(.grouped)
@@ -71,6 +70,12 @@ struct BeaconSettingsView: View {
             Button("OK", role: .cancel) { launchError = nil }
         } message: {
             Text(launchError ?? "")
+        }
+    }
+
+    private func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            NSWorkspace.shared.open(url)
         }
     }
 

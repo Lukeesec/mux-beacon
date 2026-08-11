@@ -19,7 +19,7 @@ public final class BeaconPreferences: @unchecked Sendable {
     public init(defaults: UserDefaults? = nil) {
         self.defaults = defaults ?? UserDefaults(suiteName: Self.suiteName) ?? .standard
         self.defaults.register(defaults: [
-            Key.notifyOnStart: true,
+            Key.notifyOnStart: false,
             Key.notifyOnReady: true,
             Key.notifyOnAttention: false,
             Key.notifyOnFailure: true,

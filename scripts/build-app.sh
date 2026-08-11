@@ -13,6 +13,7 @@ bin_path=$(swift build -c "$configuration" --show-bin-path)
 rm -rf "$app_path"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Helpers" "$app_path/Contents/Resources"
 cp "$repo_root/Packaging/Info.plist" "$app_path/Contents/Info.plist"
+cp "$repo_root/Assets/MuxBeacon.icns" "$app_path/Contents/Resources/MuxBeacon.icns"
 cp "$bin_path/MuxBeaconApp" "$app_path/Contents/MacOS/MuxBeaconApp"
 cp "$bin_path/mux-beacon" "$app_path/Contents/Helpers/mux-beacon"
 chmod 755 "$app_path/Contents/MacOS/MuxBeaconApp" "$app_path/Contents/Helpers/mux-beacon"

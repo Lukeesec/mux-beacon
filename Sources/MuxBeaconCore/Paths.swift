@@ -12,6 +12,7 @@ public enum BeaconPaths {
     public static var database: URL { home.appendingPathComponent("beacon.sqlite3") }
     public static var log: URL { home.appendingPathComponent("mux-beacon.log") }
     public static var notificationStatus: URL { home.appendingPathComponent("notification-status.txt") }
+    public static var inboxRequest: URL { home.appendingPathComponent("open-inbox.request") }
     public static var backupDirectory: URL { home.appendingPathComponent("backups", isDirectory: true) }
 
     public static func ensureDirectories() throws {

@@ -5,7 +5,6 @@ import SwiftUI
 struct BeaconPanel: View {
     @ObservedObject var model: BeaconAppModel
     var isStandalone = false
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,7 +51,9 @@ struct BeaconPanel: View {
             }
             .buttonStyle(.plain)
             .help("Refresh")
-            Button { openWindow(id: "preview") } label: {
+            Button {
+                (NSApp.delegate as? AppDelegate)?.openInboxWindow()
+            } label: {
                 Image(systemName: "macwindow")
             }
             .buttonStyle(.plain)

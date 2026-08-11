@@ -1,16 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="880" height="330" viewBox="0 0 880 330" role="img" aria-labelledby="title desc">
   <title id="title">Mux Beacon notification example</title>
-  <desc id="desc">A macOS-style notification titled Codex ready with project, duration, tmux target, Open, and Acknowledge actions.</desc>
+  <desc id="desc">A macOS-style notification with a bold project and Ready title, Codex and duration subtitle, tmux target, Open in Ghostty, and Acknowledge actions.</desc>
   <rect width="880" height="330" rx="34" fill="#202126"/>
-  <rect x="30" y="30" width="74" height="74" rx="20" fill="#111318"/>
-  <path d="M49 54h36v30H49zM55 62l7 7-7 7m13 0h10" fill="none" stroke="#E8EAED" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M82 48c7 4 11 11 11 18" fill="none" stroke="#5B9CFF" stroke-width="4" stroke-linecap="round"/>
+  <rect x="30" y="30" width="74" height="74" rx="19" fill="#101722" stroke="#536172"/>
+  <path d="M67 37v60M37 67h60" fill="none" stroke="#26384b" stroke-width="2"/>
+  <circle cx="67" cy="67" r="7" fill="#24b8ff"/>
+  <path d="M54 53c-8 8-8 20 0 28M80 53c8 8 8 20 0 28" fill="none" stroke="#258dff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M46 45c-13 13-13 31 0 44M88 45c13 13 13 31 0 44" fill="none" stroke="#116ee8" stroke-width="4" stroke-linecap="round"/>
   <text x="128" y="53" fill="#A7A8AD" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="600">MUX BEACON</text>
-  <text x="128" y="91" fill="#F5F5F7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="30" font-weight="700">Codex ready</text>
-  <text x="42" y="148" fill="#D0D0D4" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="600">mux-beacon · 12m 31s</text>
+  <text x="128" y="91" fill="#F5F5F7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="30" font-weight="700">mux-beacon — Ready</text>
+  <text x="42" y="148" fill="#D0D0D4" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="600">Codex · 12m 31s</text>
   <text x="42" y="188" fill="#A7A8AD" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22">Beacon › 1 native-app › pane 0</text>
   <line x1="0" y1="230" x2="880" y2="230" stroke="#3A3B40"/>
   <line x1="440" y1="230" x2="440" y2="330" stroke="#3A3B40"/>
-  <text x="220" y="292" fill="#5B9CFF" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="600">Open</text>
+  <text x="220" y="292" fill="#5B9CFF" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="600">Open in Ghostty</text>
   <text x="660" y="292" fill="#D0D0D4" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="600">Acknowledge</text>
 </svg>

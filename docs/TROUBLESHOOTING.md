@@ -2,12 +2,24 @@
 
 ## Notifications do not appear
 
-Open **System Settings → Notifications → Mux Beacon** and enable notifications. Focus and Do Not Disturb can delay or suppress presentation. Run:
+Open **System Settings → Notifications → Mux Beacon** and enable notifications. Select **Alerts**, rather than **Banners**, when they should remain until dismissed. Focus and Do Not Disturb can delay or suppress presentation. Run:
 
 ```sh
 mux-beacon test start --source codex
 mux-beacon test ready --source codex
 ```
+
+Start notifications are off by default. Enable them with `mux-beacon notifications start on` before testing `start`.
+
+## The GUI does not appear
+
+Mux Beacon normally lives in the menu bar. Open its beacon icon or run:
+
+```sh
+mux-beacon gui
+```
+
+The local installer registers the app with Launch Services and asks Spotlight to import it. Locally ad-hoc-signed builds may not appear in search immediately; `mux-beacon gui` bypasses search entirely. Re-run `./scripts/install-local.sh` if an older `~/Applications` installation is still being used.
 
 ## Codex events do not arrive
 
