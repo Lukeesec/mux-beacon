@@ -5,6 +5,7 @@ import SwiftUI
 import UserNotifications
 
 struct BeaconSettingsView: View {
+    @ObservedObject private var model = BeaconAppModel.shared
     @AppStorage("notifyOnStart", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnStart = false
     @AppStorage("notifyOnReady", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnReady = true
     @AppStorage("notifyOnAttention", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnAttention = false
@@ -41,6 +42,13 @@ struct BeaconSettingsView: View {
 
             Section("History") {
                 Stepper("Keep records for \(retentionDays) days", value: $retentionDays, in: 1...365)
+                Button(model.refreshConfirmed ? "Health check complete" : "Run session health check") {
+                    model.refreshManually()
+                }
+                .disabled(model.refreshConfirmed)
+                Text("Retires superseded sessions and tracked targets whose tmux panes no longer exist. History is automatically pruned after the retention period.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     Text("Clockify")
                     Spacer()

@@ -46,18 +46,17 @@ struct BeaconPanel: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button { model.reload() } label: {
-                Image(systemName: "arrow.clockwise")
+            Button { model.refreshManually() } label: {
+                Label(
+                    model.refreshConfirmed ? "Updated" : "Refresh",
+                    systemImage: model.refreshConfirmed ? "checkmark" : "arrow.clockwise"
+                )
+                .font(.caption)
+                .foregroundStyle(model.refreshConfirmed ? Color.green : Color.primary)
             }
             .buttonStyle(.plain)
-            .help("Refresh")
-            Button {
-                (NSApp.delegate as? AppDelegate)?.openInboxWindow()
-            } label: {
-                Image(systemName: "macwindow")
-            }
-            .buttonStyle(.plain)
-            .help("Open window")
+            .help("Refresh events and retire stale tmux targets")
+            .animation(.easeInOut(duration: 0.16), value: model.refreshConfirmed)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
@@ -69,7 +68,7 @@ struct BeaconPanel: View {
                 section("NEEDS ATTENTION", events: model.attention)
                 section("READY", events: model.ready)
                 section("RUNNING", events: model.running)
-                section("RECENT", events: model.recent)
+                section("HISTORY", events: model.history)
             }
             .padding(.vertical, 6)
         }
@@ -89,11 +88,15 @@ struct BeaconPanel: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             } header: {
-                Text(title)
+                HStack {
+                    Text(title)
+                        .tracking(1.2)
+                    Spacer()
+                    Text("\(events.count)")
+                        .monospacedDigit()
+                }
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.2)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
                     .padding(.top, 10)
                     .padding(.bottom, 5)
@@ -111,13 +114,11 @@ struct BeaconPanel: View {
             VStack(spacing: 4) {
                 Text("No agent activity yet")
                     .font(.headline)
-                Text("Install the hooks, or load demo data to explore the inbox.")
+                Text("New hook-enabled prompts and completions will appear here.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            Button("Load demo data") { model.seedDemo() }
-                .buttonStyle(.borderedProminent)
             Spacer()
         }
         .padding(36)
@@ -126,14 +127,15 @@ struct BeaconPanel: View {
 
     private var footer: some View {
         HStack {
-            Button("Demo") { model.seedDemo() }
+            if !isStandalone {
+                Button("Open window") {
+                    (NSApp.delegate as? AppDelegate)?.openInboxWindow()
+                }
                 .buttonStyle(.plain)
-            Button("Clear demo") { model.clearDemo() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+            }
             Spacer()
             Button("Settings…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                (NSApp.delegate as? AppDelegate)?.openSettingsWindow()
             }
             .buttonStyle(.plain)
             Button("Quit") { NSApp.terminate(nil) }
@@ -152,7 +154,7 @@ private struct EventRow: View {
     let markLogged: () -> Void
 
     var body: some View {
-        Button(action: { if !event.isDemo { open() } }) {
+        Button(action: { if isActionable { open() } }) {
             HStack(alignment: .top, spacing: 12) {
                 PulsingStateIcon(event: event, color: stateColor)
 
@@ -189,15 +191,29 @@ private struct EventRow: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
+        .disabled(!isActionable && !event.isDemo)
+        .help(isActionable ? "Open this tmux session and window" : unavailableReason)
         .contextMenu {
             if event.isDemo { Text("Demo record — no live target") }
-            else { Button("Open") { open() } }
+            else if isActionable { Button("Open") { open() } }
             if !event.acknowledged { Button("Acknowledge") { acknowledge() } }
             if event.completedAt != nil && !event.logged { Button("Mark time logged") { markLogged() } }
             Divider()
             Text(event.id)
         }
         .accessibilityLabel("\(event.source.displayName), \(event.projectName), \(event.state.displayName), \(event.durationLabel)")
+    }
+
+    private var isActionable: Bool {
+        !event.isDemo
+            && event.state != .stale
+            && event.tmux?.clientTTY?.isEmpty == false
+    }
+
+    private var unavailableReason: String {
+        if event.isDemo { return "Demo records do not have live targets" }
+        if event.state == .stale { return "This tracked tmux target no longer exists" }
+        return "No originating tmux client was captured"
     }
 
     private var stateColor: Color {

@@ -18,6 +18,8 @@ struct MuxBeaconCLI {
                 try doctor()
             case "status":
                 try status()
+            case "health":
+                try health()
             case "test":
                 try test(Array(arguments.dropFirst()))
             case "demo":
@@ -120,6 +122,16 @@ struct MuxBeaconCLI {
         }
     }
 
+    private static func health() throws {
+        let report = try EventHealthChecker.run()
+        EventBroadcaster.post(eventID: "")
+        if report.changed == 0 {
+            print("Session health check complete. No stale records found.")
+        } else {
+            print("Session health check complete. Retired \(report.changed) record\(report.changed == 1 ? "" : "s") (\(report.superseded) superseded, \(report.missingTargets) missing tmux targets).")
+        }
+    }
+
     private static func test(_ arguments: [String]) throws {
         let stateName = arguments.first ?? "start"
         let source = AgentSource(rawValue: option("--source", in: arguments) ?? "codex") ?? .codex
@@ -132,11 +144,12 @@ struct MuxBeaconCLI {
         case "failed": (state, hook) = (.failed, "StopFailure")
         default: throw CLIError.usage("test state must be start, ready, attention, or failed")
         }
-        let sessionID = "mux-beacon-test"
+        let testID = UUID().uuidString
+        let sessionID = "mux-beacon-test-\(testID)"
         let incoming = IncomingAgentEvent(
             source: source,
             sessionID: sessionID,
-            turnID: "manual-test",
+            turnID: testID,
             hookEventName: hook,
             cwd: FileManager.default.currentDirectoryPath,
             model: "test-model",
@@ -278,6 +291,7 @@ struct MuxBeaconCLI {
           mux-beacon uninstall [--apply]     Preview or remove only owned hooks
           mux-beacon doctor                  Check integrations and local state
           mux-beacon status                  List recent agent activity
+          mux-beacon health                  Retire superseded or missing tmux targets
           mux-beacon gui                     Open the native inbox window
           mux-beacon notifications status    Show notification preferences
           mux-beacon notifications <type> on|off
@@ -309,7 +323,7 @@ private enum AppLauncher {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: BeaconPaths.inboxRequest.path)
         do {
             for _ in 0..<3 {
-                let result = try ProcessRunner.run("/usr/bin/open", ["-gj", app, "--args", "--background"])
+                let result = try ProcessRunner.run("/usr/bin/open", ["-g", app, "--args", "--background"])
                 guard result.status == 0 else { throw AppLauncherError.openFailed(result.stderr) }
                 for _ in 0..<10 {
                     if !FileManager.default.fileExists(atPath: BeaconPaths.inboxRequest.path) { return }

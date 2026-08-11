@@ -91,6 +91,9 @@ public final class EventStore: @unchecked Sendable {
         }
 
         try upsert(event)
+        if incoming.hookEventName == "UserPromptSubmit" {
+            _ = try reconcileSupersededEvents(at: incoming.timestamp)
+        }
         return event
     }
 
@@ -134,7 +137,7 @@ public final class EventStore: @unchecked Sendable {
     public func fetchEvents(limit: Int = 100) throws -> [AgentEvent] {
         try withDatabase { db in
             var statement: OpaquePointer?
-            let sql = "SELECT payload FROM events ORDER BY updated_at DESC LIMIT ?"
+            let sql = "SELECT payload FROM events ORDER BY updated_at DESC, rowid DESC LIMIT ?"
             guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
                 throw EventStoreError.statement(errorMessage(db))
             }
@@ -177,6 +180,42 @@ public final class EventStore: @unchecked Sendable {
         event.logged = true
         event.updatedAt = Date()
         try upsert(event)
+    }
+
+    public func markStale(id: String, at timestamp: Date = Date()) throws {
+        guard var event = try fetch(id: id) else { return }
+        event.state = .stale
+        event.completedAt = event.completedAt ?? timestamp
+        event.updatedAt = timestamp
+        event.acknowledged = true
+        try upsert(event)
+    }
+
+    @discardableResult
+    public func reconcileSupersededEvents(at timestamp: Date = Date()) throws -> Int {
+        var seenTargets = Set<String>()
+        var changed = 0
+        for var event in try fetchEvents(limit: 1_000) where !event.isDemo {
+            if event.state == .stale, !event.acknowledged {
+                event.acknowledged = true
+                try upsert(event)
+                changed += 1
+                continue
+            }
+            guard
+                [.working, .background, .needsAttention].contains(event.state),
+                let target = event.tmux
+            else { continue }
+            let key = "\(target.socketPath)\u{1f}\(target.paneID)"
+            if seenTargets.insert(key).inserted { continue }
+            event.state = .stale
+            event.completedAt = event.completedAt ?? timestamp
+            event.updatedAt = timestamp
+            event.acknowledged = true
+            try upsert(event)
+            changed += 1
+        }
+        return changed
     }
 
     public func deleteDemoEvents() throws {

@@ -4,8 +4,9 @@ import SwiftUI
 @preconcurrency import UserNotifications
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private var previewWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var inboxRequestTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -55,6 +56,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         showPreviewWindow()
     }
 
+    func openSettingsWindow() {
+        activateForWindow()
+        if let settingsWindow {
+            present(settingsWindow)
+            return
+        }
+        let size = NSSize(width: 540, height: 620)
+        let controller = NSHostingController(rootView: BeaconSettingsView())
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Mux Beacon Settings"
+        window.delegate = self
+        window.contentViewController = controller
+        window.contentMinSize = NSSize(width: 500, height: 500)
+        window.center()
+        settingsWindow = window
+        present(window)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openInboxWindow()
         return true
@@ -71,9 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func showPreviewWindow() {
+        activateForWindow()
         if let previewWindow {
-            previewWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            present(previewWindow)
             return
         }
         let model = BeaconAppModel.shared
@@ -90,19 +114,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             defer: false
         )
         window.title = "Mux Beacon"
+        window.delegate = self
         window.titlebarAppearsTransparent = true
         window.contentViewController = controller
         window.contentMinSize = size
         window.setContentSize(size)
         window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         previewWindow = window
+        present(window)
 
         if let outputPath = ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_PATH"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 self?.capture(window: window, outputPath: outputPath)
             }
+        }
+    }
+
+    private func activateForWindow() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func present(_ window: NSWindow) {
+        window.orderFrontRegardless()
+        DispatchQueue.main.async {
+            self.activateForWindow()
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            if window === previewWindow { previewWindow = nil }
+            if window === settingsWindow { settingsWindow = nil }
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.previewWindow == nil, self.settingsWindow == nil else { return }
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 

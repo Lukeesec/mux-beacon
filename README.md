@@ -80,13 +80,15 @@ mux-beacon status
 
 The app and demo require no tmux restart. Hooks may require a new or reloaded agent process.
 
+Mux Beacon is hook-driven rather than a process scanner. It begins tracking an agent when a hook-enabled prompt is submitted; it cannot reconstruct turns that were already running before installation. Merely launching Claude or Codex does not produce a start event.
+
 ## Notification content
 
 ![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
 macOS renders the project and state as the bold title, with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
 
-Demo records are marked `DEMO` and intentionally have no live jump target. Remove them from the footer with **Clear demo** or run `mux-beacon clear-demo`.
+Demo records are marked `DEMO` and intentionally have no live jump target. The GUI keeps sample-data controls out of the normal workflow; remove samples with `mux-beacon clear-demo`.
 
 ## Defaults
 
@@ -147,6 +149,7 @@ The core exposes `TimeExportProvider` and `TimeEntryDraft` so a Clockify adapter
 |---|---|
 | `mux-beacon doctor` | Check app, hooks, tmux, Ghostty, and local storage |
 | `mux-beacon status` | Show recent activity in the terminal |
+| `mux-beacon health` | Retire superseded records and missing tmux targets |
 | `mux-beacon gui` | Open the native inbox window |
 | `mux-beacon notifications …` | Inspect or change alert preferences |
 | `mux-beacon jump-last` | Open the newest unread event |
@@ -162,6 +165,8 @@ tmux -S <socket> switch-client -c <client-tty> -t <pane-id>
 ```
 
 Ghostty 1.3 does not expose a terminal TTY, so Mux Beacon captures the focused terminal ID synchronously at prompt submission. Ghostty 1.4 adds TTY/PID properties, allowing direct mapping. Ambiguous or stale routes fail closed instead of switching an arbitrary terminal.
+
+The inbox checks target health every 30 seconds and whenever **Refresh** is clicked. Older active turns on the same tmux target and events whose panes no longer exist are acknowledged as stale and retained under **History** until the configured retention period expires.
 
 See [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
 

@@ -103,6 +103,16 @@ public enum TmuxInspector {
         )
     }
 
+    public static func paneAvailability(_ target: TmuxTarget) -> TmuxPaneAvailability {
+        guard let executable else { return .unknown }
+        guard let result = try? ProcessRunner.run(
+                executable,
+                ["-S", target.socketPath, "display-message", "-p", "-t", target.paneID, "#{pane_id}"],
+                timeout: 1
+        ) else { return .unknown }
+        return result.status == 0 && result.stdout == target.paneID ? .available : .missing
+    }
+
     private static func captureClient(executable: String, socket: String, paneID: String) -> (tty: String, pid: Int)? {
         let format = ["#{client_tty}", "#{client_pid}", "#{client_activity}", "#{pane_id}"]
             .joined(separator: separator)
@@ -119,6 +129,48 @@ public enum TmuxInspector {
                 return (fields[0], pid, Int(fields[2]) ?? 0)
             }
         return candidates.max(by: { $0.activity < $1.activity }).map { ($0.tty, $0.pid) }
+    }
+}
+
+public enum TmuxPaneAvailability: Equatable, Sendable {
+    case available
+    case missing
+    case unknown
+}
+
+public struct EventHealthReport: Equatable, Sendable {
+    public var superseded: Int
+    public var missingTargets: Int
+
+    public init(superseded: Int, missingTargets: Int) {
+        self.superseded = superseded
+        self.missingTargets = missingTargets
+    }
+
+    public var changed: Int { superseded + missingTargets }
+}
+
+public enum EventHealthChecker {
+    @discardableResult
+    public static func run(store: EventStore = EventStore()) throws -> EventHealthReport {
+        let superseded = try store.reconcileSupersededEvents()
+        let candidates = try store.fetchEvents(limit: 1_000).filter {
+            !$0.isDemo && $0.state != .stale && $0.tmux != nil
+        }
+        var availability: [String: TmuxPaneAvailability] = [:]
+        var missingTargets = 0
+
+        for event in candidates {
+            guard let target = event.tmux else { continue }
+            let key = "\(target.socketPath)\u{1f}\(target.paneID)"
+            let targetAvailability = availability[key] ?? TmuxInspector.paneAvailability(target)
+            availability[key] = targetAvailability
+            guard targetAvailability == .missing else { continue }
+            try store.markStale(id: event.id)
+            missingTargets += 1
+        }
+
+        return EventHealthReport(superseded: superseded, missingTargets: missingTargets)
     }
 }
 

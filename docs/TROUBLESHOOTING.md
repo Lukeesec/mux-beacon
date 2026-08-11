@@ -11,6 +11,13 @@ mux-beacon test ready --source codex
 
 Start notifications are off by default. Enable them with `mux-beacon notifications start on` before testing `start`.
 
+Starting the Codex or Claude application does not itself fire `UserPromptSubmit`. Submit a prompt to create the Working event. Completion notifications are on by default and fire when the agent's `Stop` hook runs. Confirm the installed definitions and preferences with:
+
+```sh
+mux-beacon doctor
+mux-beacon notifications status
+```
+
 ## The GUI does not appear
 
 Mux Beacon normally lives in the menu bar. Open its beacon icon or run:
@@ -33,7 +40,13 @@ Allow Mux Beacon under **System Settings → Privacy & Security → Automation**
 
 Pane IDs are stable only for the pane's lifetime. The event remains in history, but navigation becomes stale after the pane is destroyed.
 
-Demo records use fictional targets and cannot be opened. They are marked `DEMO`; remove them with **Clear demo** in the GUI or `mux-beacon clear-demo`.
+Click **Refresh** or run `mux-beacon health` to reconcile immediately; the app also checks every 30 seconds. Superseded turns and dead tmux targets move to **History** and are no longer clickable.
+
+Demo records use fictional targets and cannot be opened. They are marked `DEMO`; remove them with `mux-beacon clear-demo`.
+
+## Older running agents are missing
+
+Mux Beacon receives lifecycle hooks; it does not inspect or reconstruct the state of arbitrary existing processes. Agents that were already running before hook installation appear after their next hook-enabled prompt. New Claude or Codex processes load the current hook configuration automatically; an older process may need to be restarted or reloaded.
 
 ## Restore pane borders
 

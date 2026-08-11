@@ -13,9 +13,5 @@ struct MuxBeaconApplication: App {
                 .labelStyle(.titleAndIcon)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            BeaconSettingsView()
-        }
     }
 }

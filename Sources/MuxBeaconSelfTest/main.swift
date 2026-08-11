@@ -9,6 +9,7 @@ struct MuxBeaconSelfTest {
             ("Claude background Stop fixture", testClaudeBackground),
             ("Start and permission notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
+            ("Superseded pane sessions retire", testSessionReconciliation),
             ("Turn persistence and duration", testStoreFlow),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
@@ -91,6 +92,29 @@ struct MuxBeaconSelfTest {
         try expect(abs(stop.duration - 125) < 0.01 && entryCount == 1)
         let permissions = try FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent("test.sqlite3").path)[.posixPermissions] as? NSNumber
         try expect(permissions?.intValue == 0o600)
+    }
+
+    private static func testSessionReconciliation() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = TmuxTarget(
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Vigil",
+            windowID: "@1", windowIndex: 1, windowName: "agents",
+            paneID: "%1", paneIndex: 0, paneTitle: "agent", panePath: "/tmp"
+        )
+        let first = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "old", turnID: "one", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/old", model: nil, state: .working,
+            timestamp: Date(timeIntervalSince1970: 10), tmux: target
+        ))
+        let second = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "new", turnID: "two", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/new", model: nil, state: .working,
+            timestamp: Date(timeIntervalSince1970: 10), tmux: target
+        ))
+        let retired = try store.fetch(id: first.id)
+        let current = try store.fetch(id: second.id)
+        try expect(retired?.state == .stale && retired?.acknowledged == true && current?.state == .working)
     }
 
     private static func testMalformedHookConfig() throws {

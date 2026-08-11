@@ -9,12 +9,15 @@ final class BeaconAppModel: ObservableObject {
 
     @Published private(set) var events: [AgentEvent] = []
     @Published var lastError: String?
+    @Published private(set) var refreshConfirmed = false
 
     private let store = EventStore()
     private let preferences = BeaconPreferences.shared
     private let notificationTracker = NotificationTracker()
     private var observer: NSObjectProtocol?
     private var timer: AnyCancellable?
+    private var healthTimer: AnyCancellable?
+    private var refreshGeneration = 0
 
     init() {
         observer = DistributedNotificationCenter.default().addObserver(
@@ -28,6 +31,9 @@ final class BeaconAppModel: ObservableObject {
         timer = Timer.publish(every: 2, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.reload() }
+        healthTimer = Timer.publish(every: 30, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.performHealthCheck() }
         reload()
     }
 
@@ -35,12 +41,18 @@ final class BeaconAppModel: ObservableObject {
         if let observer { DistributedNotificationCenter.default().removeObserver(observer) }
     }
 
-    var unreadCount: Int { events.filter { !$0.acknowledged && $0.state != .working }.count }
+    var unreadCount: Int {
+        events.filter { !$0.acknowledged && [.ready, .failed, .needsAttention].contains($0.state) }.count
+    }
     var menuBarSymbol: String { unreadCount > 0 ? "dot.radiowaves.left.and.right" : "circle.dotted" }
     var attention: [AgentEvent] { events.filter { $0.state == .needsAttention && !$0.acknowledged } }
     var ready: [AgentEvent] { events.filter { [.ready, .failed].contains($0.state) && !$0.acknowledged } }
     var running: [AgentEvent] { events.filter { [.working, .background].contains($0.state) } }
-    var recent: [AgentEvent] { events.filter(\.acknowledged).prefix(8).map { $0 } }
+    var history: [AgentEvent] {
+        events.filter {
+            $0.state == .stale || ($0.acknowledged && ![.working, .background].contains($0.state))
+        }.prefix(30).map { $0 }
+    }
 
     func reload(notifyEventID: String? = nil) {
         do {
@@ -54,6 +66,27 @@ final class BeaconAppModel: ObservableObject {
             }
             let cutoff = Calendar.current.date(byAdding: .day, value: -preferences.retentionDays, to: Date()) ?? .distantPast
             try store.prune(olderThan: cutoff)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshManually() {
+        performHealthCheck()
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        refreshConfirmed = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard let self, self.refreshGeneration == generation else { return }
+            self.refreshConfirmed = false
+        }
+    }
+
+    func performHealthCheck() {
+        do {
+            _ = try EventHealthChecker.run(store: store)
+            reload()
         } catch {
             lastError = error.localizedDescription
         }
@@ -82,20 +115,6 @@ final class BeaconAppModel: ObservableObject {
     func markLogged(_ event: AgentEvent) {
         do {
             try store.markLogged(id: event.id)
-            reload()
-        } catch { lastError = error.localizedDescription }
-    }
-
-    func seedDemo() {
-        do {
-            _ = try DemoSeeder.seed(store: store)
-            reload()
-        } catch { lastError = error.localizedDescription }
-    }
-
-    func clearDemo() {
-        do {
-            try store.deleteDemoEvents()
             reload()
         } catch { lastError = error.localizedDescription }
     }
@@ -137,6 +156,8 @@ final class BeaconAppModel: ObservableObject {
             center.add(UNNotificationRequest(identifier: event.id, content: content, trigger: nil)) { error in
                 if let error {
                     BeaconLog.write("notification delivery: \(error.localizedDescription)")
+                } else {
+                    BeaconLog.write("notification queued: \(event.id)")
                 }
                 notificationTracker.finish(key, delivered: error == nil)
             }
