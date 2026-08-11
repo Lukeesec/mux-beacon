@@ -79,6 +79,10 @@ macOS controls final banner layout, truncation, and Focus/DND delivery. Routing 
 
 ## tmux views
 
+![Illustrated preview of Mux Beacon state badges embedded in tmux pane borders](docs/assets/tmux-badges-preview.svg)
+
+The state appears at the left of each pane's top border—blue `● WORKING`, green `● READY`, yellow `● ATTENTION`, or red `● FAILED`—followed by the existing pane title and pane number. The illustration uses a neutral theme; tmux renders it using your terminal's font and background. These badges are most useful when a window is split into panes; desktop notifications and the menu-bar inbox provide visibility across hidden windows and sessions.
+
 ```sh
 mux-beacon tmux popup
 mux-beacon tmux enable-badges
