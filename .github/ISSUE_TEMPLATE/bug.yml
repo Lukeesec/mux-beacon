@@ -1,0 +1,31 @@
+name: Bug report
+description: Report incorrect lifecycle, notification, routing, or installer behavior.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove prompts, commands, paths, session names, and tokens from logs or screenshots.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS, tmux, terminal, Claude Code/Codex, and Mux Beacon versions.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Sanitized `mux-beacon doctor` output

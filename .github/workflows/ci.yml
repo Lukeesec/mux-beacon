@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Self-test
+        run: swift run mux-beacon-self-test
+      - name: Validate scripts
+        run: zsh -n scripts/*.sh
+      - name: Build app bundle
+        run: ./scripts/build-app.sh
+      - name: Verify app bundle
+        run: codesign --verify --deep --strict "dist/Mux Beacon.app"

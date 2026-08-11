@@ -1,0 +1,21 @@
+name: Release artifact
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift run mux-beacon-self-test
+      - run: ./scripts/build-app.sh
+      - run: ditto -c -k --sequesterRsrc --keepParent "dist/Mux Beacon.app" "Mux-Beacon-${GITHUB_REF_NAME}.zip"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: Mux-Beacon-${{ github.ref_name }}.zip
+          generate_release_notes: true

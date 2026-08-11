@@ -1,0 +1,133 @@
+# Mux Beacon
+
+Know when terminal agents need you—and get back to the exact tmux target.
+
+Mux Beacon is a native macOS menu-bar inbox for Claude Code and Codex. It uses first-class lifecycle hooks, records local turn duration, shows optional pane-border badges, and makes completion notifications actionable without taking over your tmux window names.
+
+![Mux Beacon inbox showing Claude and Codex agents grouped by state](docs/assets/mux-beacon-inbox.png)
+
+## Why it exists
+
+A busy tmux setup can hide finished work across sessions and windows. Mux Beacon turns each agent turn into a small lifecycle:
+
+```text
+prompt submitted → working → ready / failed
+                         └→ needs attention (optional)
+```
+
+- `UserPromptSubmit` is visible immediately and sends a **started** notification by default.
+- Completion and failure notifications contain agent, project, duration, and `session › window › pane`.
+- Clicking **Open** targets the originating tmux client and focuses the captured Ghostty terminal.
+- **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
+- `PermissionRequest` is supported but its notification is off by default.
+- Prompts, commands, and final answers are not stored unless previews are explicitly enabled.
+
+## Requirements
+
+- macOS 13 or newer
+- tmux 3.2 or newer
+- Claude Code with hooks, or Codex CLI with hooks
+- Ghostty 1.3+ for exact window/tab focus; other terminals still receive the inbox and tmux metadata
+
+## Install locally
+
+```sh
+git clone https://github.com/Lukeesec/mux-beacon.git
+cd mux-beacon
+./scripts/install-local.sh
+mux-beacon install
+mux-beacon install --apply
+```
+
+The first `install` is a dry run. Applying the installation:
+
+- adds owned handlers to `~/.claude/settings.json`;
+- adds owned handlers to `~/.codex/hooks.json`;
+- does **not** replace Codex's legacy `notify` command or rewrite `config.toml`;
+- writes timestamped backups before every change.
+
+Codex asks you to review new hooks once. Open `/hooks` and trust the Mux Beacon definitions.
+
+Permission events are deferred by default. Users who want them can install the adapter explicitly and then enable its notification in Settings:
+
+```sh
+mux-beacon install --apply --with-permission-events
+```
+
+Allow notifications when macOS prompts. To enable exact Ghostty focus, allow Mux Beacon to automate Ghostty under **System Settings → Privacy & Security → Automation**.
+
+## Try it without touching hook configuration
+
+```sh
+mux-beacon demo
+mux-beacon test start --source codex
+mux-beacon test ready --source codex
+mux-beacon status
+```
+
+The app and demo require no tmux restart. Hooks may require a new or reloaded agent process.
+
+## Notification content
+
+![Example Mux Beacon notification showing agent, project, duration, tmux target, Open, and Acknowledge](docs/assets/notification-preview.svg)
+
+macOS controls final banner layout, truncation, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+
+## Defaults
+
+![Mux Beacon notification and privacy settings](docs/assets/mux-beacon-settings.png)
+
+## tmux views
+
+```sh
+mux-beacon tmux popup
+mux-beacon tmux enable-badges
+mux-beacon tmux disable-badges
+```
+
+Badges are opt-in. Mux Beacon saves the exact existing `pane-border-status` and `pane-border-format`, changes neither `window-status-format` nor window names, and restores the saved values when disabled.
+
+## Time records
+
+Turn duration is measured from prompt submission until completion or failure.
+
+```sh
+mux-beacon export --format json --output mux-beacon-time.json
+mux-beacon export --format csv --output mux-beacon-time.csv
+```
+
+The core exposes `TimeExportProvider` and `TimeEntryDraft` so a Clockify adapter can be added without changing hook or UI code. Direct Clockify credentials and API calls are deferred from the first release; see [Clockify integration design](docs/CLOCKIFY.md).
+
+## Useful commands
+
+| Command | Purpose |
+|---|---|
+| `mux-beacon doctor` | Check app, hooks, tmux, Ghostty, and local storage |
+| `mux-beacon status` | Show recent activity in the terminal |
+| `mux-beacon jump-last` | Open the newest unread event |
+| `mux-beacon demo` / `clear-demo` | Add or remove anonymized sample data |
+| `mux-beacon uninstall --apply` | Remove only Mux Beacon's hook handlers |
+
+## How routing works
+
+Mux Beacon stores stable tmux IDs and the exact server socket. Navigation uses:
+
+```sh
+tmux -S <socket> switch-client -c <client-tty> -t <pane-id>
+```
+
+Ghostty 1.3 does not expose a terminal TTY, so Mux Beacon captures the focused terminal ID synchronously at prompt submission. Ghostty 1.4 adds TTY/PID properties, allowing direct mapping. Ambiguous or stale routes fail closed instead of switching an arbitrary terminal.
+
+See [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
+
+## Privacy and security
+
+- Local-only SQLite database; no telemetry.
+- User-only application-support directory and hook backups.
+- No approval or denial actions from notifications.
+- Opaque event IDs in notification metadata; no shell commands or tmux labels in URLs.
+- Hook commands return success without steering the agent.
+
+## License
+
+MIT © 2026 Lukeesec contributors.

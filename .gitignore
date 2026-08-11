@@ -1,0 +1,6 @@
+.DS_Store
+/.build/
+/dist/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.swp

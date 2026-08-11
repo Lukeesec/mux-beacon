@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Mux Beacon mark</title>
+  <desc id="desc">A focused terminal pane emitting two restrained beacon arcs.</desc>
+  <rect width="256" height="256" rx="58" fill="#111318"/>
+  <path d="M61 72h134v112H61z" fill="none" stroke="#E8EAED" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M84 104l25 24-25 24M122 153h43" fill="none" stroke="#E8EAED" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M177 54c17 9 28 27 28 47M190 35c26 14 43 41 43 72" fill="none" stroke="#5B9CFF" stroke-width="11" stroke-linecap="round"/>
+</svg>
