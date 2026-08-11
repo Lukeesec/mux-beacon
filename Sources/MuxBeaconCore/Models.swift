@@ -101,7 +101,7 @@ public struct TmuxTarget: Codable, Equatable, Sendable {
     }
 
     public var displayPath: String {
-        "\(sessionName) › \(windowIndex) \(windowName) › pane \(paneIndex)"
+        "\(sessionName) › \(windowName)"
     }
 }
 
@@ -199,7 +199,8 @@ public struct AgentEvent: Codable, Identifiable, Equatable, Sendable {
     }
 
     public var routeLabel: String {
-        tmux?.displayPath ?? "Outside tmux"
+        guard let tmux else { return "Outside tmux" }
+        return isDemo ? "\(tmux.displayPath) · demo" : tmux.displayPath
     }
 }
 

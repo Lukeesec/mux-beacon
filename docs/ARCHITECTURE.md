@@ -33,7 +33,7 @@ Claude's `prompt_id` and Codex's `turn_id` correlate state changes. When an olde
 
 ## Stored data
 
-Each event stores provider/session/turn identity, state, project, timestamps, tmux routing metadata, optional Ghostty terminal ID, acknowledgement, and time-log status. Preview text is discarded before persistence unless the user enables it.
+Each event stores provider/session/turn identity, state, project, timestamps, tmux routing metadata, optional Ghostty terminal ID, acknowledgement, and time-log status. User-facing routes emphasize `session › window`; stable pane and client IDs remain private routing metadata. Preview text is discarded before persistence unless the user enables it.
 
 ## Routing confidence
 

@@ -33,6 +33,8 @@ Allow Mux Beacon under **System Settings → Privacy & Security → Automation**
 
 Pane IDs are stable only for the pane's lifetime. The event remains in history, but navigation becomes stale after the pane is destroyed.
 
+Demo records use fictional targets and cannot be opened. They are marked `DEMO`; remove them with **Clear demo** in the GUI or `mux-beacon clear-demo`.
+
 ## Restore pane borders
 
 ```sh

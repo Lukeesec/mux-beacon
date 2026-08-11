@@ -18,7 +18,7 @@ prompt submitted → working → ready / failed
 ```
 
 - `UserPromptSubmit` records the start immediately; its notification is opt-in to avoid noise.
-- Completion and failure notifications contain agent, project, duration, and `session › window › pane`.
+- Completion and failure notifications contain agent, project, duration, and `session › window`.
 - Clicking **Open in Ghostty** targets the originating tmux client and focuses the captured Ghostty terminal.
 - **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
 - `PermissionRequest` is supported but its notification is off by default.
@@ -85,6 +85,8 @@ The app and demo require no tmux restart. Hooks may require a new or reloaded ag
 ![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
 macOS renders the project and state as the bold title, with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+
+Demo records are marked `DEMO` and intentionally have no live jump target. Remove them from the footer with **Clear demo** or run `mux-beacon clear-demo`.
 
 ## Defaults
 

@@ -152,7 +152,7 @@ private struct EventRow: View {
     let markLogged: () -> Void
 
     var body: some View {
-        Button(action: open) {
+        Button(action: { if !event.isDemo { open() } }) {
             HStack(alignment: .top, spacing: 12) {
                 PulsingStateIcon(event: event, color: stateColor)
 
@@ -164,6 +164,12 @@ private struct EventRow: View {
                         Text(event.source.displayName)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
+                        if event.isDemo {
+                            Text("DEMO")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                .tracking(0.6)
+                                .foregroundStyle(Color.accentColor)
+                        }
                         Spacer()
                         Text(event.durationLabel)
                             .font(.system(size: 11, design: .monospaced))
@@ -184,7 +190,8 @@ private struct EventRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("Open") { open() }
+            if event.isDemo { Text("Demo record — no live target") }
+            else { Button("Open") { open() } }
             if !event.acknowledged { Button("Acknowledge") { acknowledge() } }
             if event.completedAt != nil && !event.logged { Button("Mark time logged") { markLogged() } }
             Divider()

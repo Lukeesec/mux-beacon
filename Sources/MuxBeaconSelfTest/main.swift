@@ -8,6 +8,7 @@ struct MuxBeaconSelfTest {
             ("Codex UserPromptSubmit fixture", testCodexStart),
             ("Claude background Stop fixture", testClaudeBackground),
             ("Start and permission notifications default off", testNotificationDefaults),
+            ("Routes emphasize session and window", testRouteLabel),
             ("Turn persistence and duration", testStoreFlow),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
@@ -49,6 +50,28 @@ struct MuxBeaconSelfTest {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = BeaconPreferences(defaults: defaults)
         try expect(!preferences.notifyOnStart && preferences.notifyOnReady && !preferences.notifyOnAttention && preferences.notifyOnFailure)
+    }
+
+    private static func testRouteLabel() throws {
+        let tmux = TmuxTarget(
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Vigil",
+            windowID: "@7", windowIndex: 7, windowName: "AINotifier",
+            paneID: "%2", paneIndex: 2, paneTitle: "agent", panePath: "/tmp"
+        )
+        let event = AgentEvent(
+            id: "route", source: .codex, sessionID: "session", state: .ready,
+            hookEventName: "Stop", cwd: "/tmp", projectName: "project", tmux: tmux
+        )
+        try expect(event.routeLabel == "Vigil › AINotifier" && !event.routeLabel.contains("pane"))
+        var demo = event
+        demo.isDemo = true
+        try expect(demo.routeLabel == "Vigil › AINotifier · demo")
+        do {
+            try TargetRouter.jump(to: demo)
+            throw SelfTestError.failedExpectation
+        } catch RoutingError.demo {
+            // Demo events must never attempt live tmux navigation.
+        }
     }
 
     private static func testStoreFlow() throws {

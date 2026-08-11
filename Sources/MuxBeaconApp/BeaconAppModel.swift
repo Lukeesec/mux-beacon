@@ -102,7 +102,7 @@ final class BeaconAppModel: ObservableObject {
 
     private func deliverNotificationIfNeeded(_ event: AgentEvent) {
         let key = "\(event.id):\(event.state.rawValue)"
-        guard !event.acknowledged, preferences.shouldNotify(for: event.state), notificationTracker.begin(key) else { return }
+        guard !event.isDemo, !event.acknowledged, preferences.shouldNotify(for: event.state), notificationTracker.begin(key) else { return }
 
         let content = UNMutableNotificationContent()
         let stateLabel: String

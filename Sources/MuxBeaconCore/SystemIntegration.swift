@@ -165,6 +165,7 @@ public enum GhosttyInspector {
 }
 
 public enum RoutingError: LocalizedError {
+    case demo
     case notInTmux
     case ambiguousClient
     case stalePane
@@ -173,6 +174,7 @@ public enum RoutingError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
+        case .demo: "Demo records do not point to a live tmux target. Clear them with mux-beacon clear-demo."
         case .notInTmux: "This event was not captured inside tmux."
         case .ambiguousClient: "Mux Beacon could not identify the originating tmux client."
         case .stalePane: "The captured tmux pane no longer exists."
@@ -184,6 +186,7 @@ public enum RoutingError: LocalizedError {
 
 public enum TargetRouter {
     public static func jump(to event: AgentEvent) throws {
+        guard !event.isDemo else { throw RoutingError.demo }
         guard let target = event.tmux else { throw RoutingError.notInTmux }
         guard let executable = TmuxInspector.executable else { throw RoutingError.tmux("tmux is not installed") }
         guard let clientTTY = target.clientTTY, !clientTTY.isEmpty else { throw RoutingError.ambiguousClient }
