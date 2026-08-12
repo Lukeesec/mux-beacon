@@ -69,6 +69,7 @@ mux-beacon gui
 ```
 
 Launching the app directly opens a standalone inbox window. Background hook launches remain unobtrusive.
+Hook events never open or focus the inbox; only an explicit GUI, Settings, or notification-navigation action brings Mux Beacon forward.
 
 ## Try it without touching hook configuration
 

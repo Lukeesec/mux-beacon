@@ -338,8 +338,16 @@ private enum AppLauncher {
     }
 
     static func launchIfAvailable() {
+        guard !isRunning else { return }
         guard let app = applicationPath() else { return }
         _ = try? ProcessRunner.run("/usr/bin/open", ["-gj", app, "--args", "--background"])
+    }
+
+    private static var isRunning: Bool {
+        guard let result = try? ProcessRunner.run("/usr/bin/pgrep", ["-x", "MuxBeaconApp"], timeout: 1) else {
+            return false
+        }
+        return result.status == 0 && !result.stdout.isEmpty
     }
 
     private static func applicationPath() -> String? {
