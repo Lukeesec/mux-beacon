@@ -12,7 +12,6 @@ struct BeaconSettingsView: View {
     @AppStorage("notifyOnFailure", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnFailure = true
     @AppStorage("notificationSound", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notificationSound = true
     @AppStorage("storePreviews", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var storePreviews = false
-    @AppStorage("retentionDays", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var retentionDays = 30
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String?
 
@@ -41,12 +40,11 @@ struct BeaconSettingsView: View {
             }
 
             Section("History") {
-                Stepper("Keep records for \(retentionDays) days", value: $retentionDays, in: 1...365)
                 Button(model.refreshConfirmed ? "Health check complete" : "Run session health check") {
                     model.refreshManually()
                 }
                 .disabled(model.refreshConfirmed)
-                Text("Retires superseded sessions and tracked targets whose tmux panes no longer exist. History is automatically pruned after the retention period.")
+                Text("Retires superseded sessions and tracked targets whose tmux panes no longer exist. History records are automatically removed after 7 days.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {

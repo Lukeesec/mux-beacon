@@ -105,7 +105,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let size = settingsMode ? NSSize(width: 520, height: 520) : NSSize(width: 450, height: 620)
         let rootView = settingsMode
             ? AnyView(BeaconSettingsView().frame(width: size.width, height: size.height))
-            : AnyView(BeaconPanel(model: model, isStandalone: true).frame(width: size.width, height: size.height))
+            : AnyView(BeaconPanel(
+                model: model,
+                isStandalone: true,
+                openInbox: { [weak self] in self?.openInboxWindow() },
+                openSettings: { [weak self] in self?.openSettingsWindow() }
+            ).frame(width: size.width, height: size.height))
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
@@ -177,6 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         guard url.scheme == "muxbeacon" else { return }
         if url.host == "inbox" {
             showPreviewWindow()
+            return
+        }
+        if url.host == "settings" {
+            openSettingsWindow()
             return
         }
         guard url.host == "event" else { return }

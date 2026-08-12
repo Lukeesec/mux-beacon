@@ -56,6 +56,7 @@ final class BeaconAppModel: ObservableObject {
 
     func reload(notifyEventID: String? = nil) {
         do {
+            try store.pruneExpiredHistory()
             events = try store.fetchEvents(limit: 100)
             if let id = notifyEventID, !id.isEmpty, let event = events.first(where: { $0.id == id }) {
                 deliverNotificationIfNeeded(event)
@@ -64,8 +65,6 @@ final class BeaconAppModel: ObservableObject {
             for event in events where event.updatedAt >= recentCutoff {
                 deliverNotificationIfNeeded(event)
             }
-            let cutoff = Calendar.current.date(byAdding: .day, value: -preferences.retentionDays, to: Date()) ?? .distantPast
-            try store.prune(olderThan: cutoff)
         } catch {
             lastError = error.localizedDescription
         }

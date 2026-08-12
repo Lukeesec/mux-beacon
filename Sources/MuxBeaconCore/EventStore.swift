@@ -16,6 +16,7 @@ public enum EventStoreError: LocalizedError {
 }
 
 public final class EventStore: @unchecked Sendable {
+    public static let historyRetentionDays = 7
     private let databaseURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -94,6 +95,7 @@ public final class EventStore: @unchecked Sendable {
         if incoming.hookEventName == "UserPromptSubmit" {
             _ = try reconcileSupersededEvents(at: incoming.timestamp)
         }
+        try pruneExpiredHistory(now: incoming.timestamp)
         return event
     }
 
@@ -224,9 +226,17 @@ public final class EventStore: @unchecked Sendable {
         }
     }
 
-    public func prune(olderThan cutoff: Date) throws {
+    public func pruneExpiredHistory(now: Date = Date()) throws {
+        let cutoff = now.addingTimeInterval(-TimeInterval(Self.historyRetentionDays * 24 * 60 * 60))
         try withDatabase { db in
-            try execute(db, sql: "DELETE FROM events WHERE updated_at < ?") { statement in
+            try execute(
+                db,
+                sql: """
+                DELETE FROM events
+                WHERE updated_at < ?
+                  AND (state = 'stale' OR (acknowledged = 1 AND state NOT IN ('working', 'background')))
+                """
+            ) { statement in
                 sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
             }
         }

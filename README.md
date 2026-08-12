@@ -166,7 +166,7 @@ tmux -S <socket> switch-client -c <client-tty> -t <pane-id>
 
 Ghostty 1.3 does not expose a terminal TTY, so Mux Beacon captures the focused terminal ID synchronously at prompt submission. Ghostty 1.4 adds TTY/PID properties, allowing direct mapping. Ambiguous or stale routes fail closed instead of switching an arbitrary terminal.
 
-The inbox checks target health every 30 seconds and whenever **Refresh** is clicked. Older active turns on the same tmux target and events whose panes no longer exist are acknowledged as stale and retained under **History** until the configured retention period expires.
+The inbox checks target health every 30 seconds and whenever **Refresh** is clicked. Older active turns on the same tmux target and events whose panes no longer exist are acknowledged as stale and retained under **History** for 7 days. Running and unread records are never removed by history cleanup.
 
 See [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
 

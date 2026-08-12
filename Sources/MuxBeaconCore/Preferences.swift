@@ -11,7 +11,6 @@ public final class BeaconPreferences: @unchecked Sendable {
         static let notifyOnFailure = "notifyOnFailure"
         static let notificationSound = "notificationSound"
         static let storePreviews = "storePreviews"
-        static let retentionDays = "retentionDays"
     }
 
     public let defaults: UserDefaults
@@ -25,7 +24,6 @@ public final class BeaconPreferences: @unchecked Sendable {
             Key.notifyOnFailure: true,
             Key.notificationSound: true,
             Key.storePreviews: false,
-            Key.retentionDays: 30,
         ])
     }
 
@@ -57,11 +55,6 @@ public final class BeaconPreferences: @unchecked Sendable {
     public var storePreviews: Bool {
         get { defaults.bool(forKey: Key.storePreviews) }
         set { defaults.set(newValue, forKey: Key.storePreviews) }
-    }
-
-    public var retentionDays: Int {
-        get { max(1, defaults.integer(forKey: Key.retentionDays)) }
-        set { defaults.set(max(1, newValue), forKey: Key.retentionDays) }
     }
 
     public func shouldNotify(for state: AgentState) -> Bool {

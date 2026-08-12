@@ -5,6 +5,20 @@ import SwiftUI
 struct BeaconPanel: View {
     @ObservedObject var model: BeaconAppModel
     var isStandalone = false
+    let openInbox: () -> Void
+    let openSettings: () -> Void
+
+    init(
+        model: BeaconAppModel,
+        isStandalone: Bool = false,
+        openInbox: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) {
+        self.model = model
+        self.isStandalone = isStandalone
+        self.openInbox = openInbox
+        self.openSettings = openSettings
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -129,13 +143,13 @@ struct BeaconPanel: View {
         HStack {
             if !isStandalone {
                 Button("Open window") {
-                    (NSApp.delegate as? AppDelegate)?.openInboxWindow()
+                    openInbox()
                 }
                 .buttonStyle(.plain)
             }
             Spacer()
             Button("Settings…") {
-                (NSApp.delegate as? AppDelegate)?.openSettingsWindow()
+                openSettings()
             }
             .buttonStyle(.plain)
             Button("Quit") { NSApp.terminate(nil) }

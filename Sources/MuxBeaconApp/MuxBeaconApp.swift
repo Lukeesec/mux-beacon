@@ -7,7 +7,11 @@ struct MuxBeaconApplication: App {
 
     var body: some Scene {
         MenuBarExtra {
-            BeaconPanel(model: model)
+            BeaconPanel(
+                model: model,
+                openInbox: { appDelegate.openInboxWindow() },
+                openSettings: { appDelegate.openSettingsWindow() }
+            )
         } label: {
             Label("Mux Beacon", systemImage: model.menuBarSymbol)
                 .labelStyle(.titleAndIcon)

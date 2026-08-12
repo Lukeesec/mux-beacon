@@ -10,6 +10,7 @@ struct MuxBeaconSelfTest {
             ("Start and permission notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
             ("Superseded pane sessions retire", testSessionReconciliation),
+            ("History expires after seven days", testHistoryRetention),
             ("Turn persistence and duration", testStoreFlow),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
@@ -115,6 +116,38 @@ struct MuxBeaconSelfTest {
         let retired = try store.fetch(id: first.id)
         let current = try store.fetch(id: second.id)
         try expect(retired?.state == .stale && retired?.acknowledged == true && current?.state == .working)
+    }
+
+    private static func testHistoryRetention() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let expired = now.addingTimeInterval(-8 * 24 * 60 * 60)
+        let recent = now.addingTimeInterval(-6 * 24 * 60 * 60)
+
+        func event(id: String, state: AgentState, updatedAt: Date, acknowledged: Bool) -> AgentEvent {
+            AgentEvent(
+                id: id, source: .codex, sessionID: id, state: state,
+                hookEventName: state == .working ? "UserPromptSubmit" : "Stop",
+                cwd: "/tmp", projectName: "project", createdAt: updatedAt,
+                startedAt: updatedAt, updatedAt: updatedAt,
+                completedAt: state.isTerminal ? updatedAt : nil,
+                acknowledged: acknowledged
+            )
+        }
+
+        try store.upsert(event(id: "old-stale", state: .stale, updatedAt: expired, acknowledged: true))
+        try store.upsert(event(id: "old-read", state: .ready, updatedAt: expired, acknowledged: true))
+        try store.upsert(event(id: "old-unread", state: .ready, updatedAt: expired, acknowledged: false))
+        try store.upsert(event(id: "old-running", state: .working, updatedAt: expired, acknowledged: false))
+        try store.upsert(event(id: "recent-stale", state: .stale, updatedAt: recent, acknowledged: true))
+
+        try store.pruneExpiredHistory(now: now)
+        try expect(try store.fetch(id: "old-stale") == nil)
+        try expect(try store.fetch(id: "old-read") == nil)
+        try expect(try store.fetch(id: "old-unread") != nil)
+        try expect(try store.fetch(id: "old-running") != nil)
+        try expect(try store.fetch(id: "recent-stale") != nil)
     }
 
     private static func testMalformedHookConfig() throws {
