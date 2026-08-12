@@ -11,7 +11,7 @@ jobs:
   package:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swift run mux-beacon-self-test
       - run: ./scripts/build-app.sh
       - run: ditto -c -k --sequesterRsrc --keepParent "dist/Mux Beacon.app" "Mux-Beacon-${GITHUB_REF_NAME}.zip"
