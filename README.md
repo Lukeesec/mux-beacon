@@ -68,8 +68,7 @@ Mux Beacon is primarily a menu-bar app. Click its beacon icon in the macOS menu 
 mux-beacon gui
 ```
 
-Launching the app directly opens a standalone inbox window. Background hook launches remain unobtrusive.
-Hook events never open or focus the inbox; only an explicit GUI, Settings, or notification-navigation action brings Mux Beacon forward.
+Launching the app directly starts its menu-bar item without opening a window. Hook events and notification clicks never open or focus the inbox; only **Open window**, a fresh `mux-beacon gui` request, or `muxbeacon://inbox` brings it forward. Notification navigation returns directly to Ghostty and the captured tmux target.
 
 ## Try it without touching hook configuration
 

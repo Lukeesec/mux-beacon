@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     func applicationDidFinishLaunching(_ notification: Notification) {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        let open = UNNotificationAction(identifier: "OPEN", title: "Open in Ghostty", options: [.foreground])
+        let open = UNNotificationAction(identifier: "OPEN", title: "Open in Ghostty", options: [])
         let acknowledge = UNNotificationAction(identifier: "ACKNOWLEDGE", title: "Acknowledge")
         center.setNotificationCategories([
             UNNotificationCategory(
@@ -44,10 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
         if CommandLine.arguments.contains("--screenshot") || ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_MODE"] == "1" {
             showPreviewWindow()
-        } else if !CommandLine.arguments.contains("--background") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.showPreviewWindow()
-            }
         }
         consumeInboxRequest()
     }
@@ -79,18 +75,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         present(window)
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        openInboxWindow()
-        return true
-    }
-
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
 
     private func consumeInboxRequest() {
         guard FileManager.default.fileExists(atPath: BeaconPaths.inboxRequest.path) else { return }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: BeaconPaths.inboxRequest.path)
+        let modifiedAt = attributes?[.modificationDate] as? Date
         try? FileManager.default.removeItem(at: BeaconPaths.inboxRequest)
+        guard let modifiedAt, Date().timeIntervalSince(modifiedAt) < 10 else { return }
         showPreviewWindow()
     }
 
