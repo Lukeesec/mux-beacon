@@ -1,0 +1,41 @@
+# Repository guidance
+
+## Product invariants
+
+- Hook activity and notification clicks must never open or focus the Mux Beacon inbox. Only an explicit GUI action (`mux-beacon gui`, the menu-bar command, or `muxbeacon://inbox`) may do that.
+- User-facing routes emphasize `session › window`. Pane and client identifiers are private routing metadata.
+- Start and permission notifications are off by default. Completion and failure notifications are on by default.
+- Do not store prompts, commands, or final-answer previews unless the user explicitly enables previews.
+- Preserve user configuration. Hook installation is additive, creates backups, and must not replace an existing Codex `notify` command.
+
+## Agent integrations
+
+- Claude completion arrives through its `Stop` lifecycle hook.
+- Codex `UserPromptSubmit` arrives through `~/.codex/hooks.json`, but do not assume Codex emits `Stop` after every turn. Reliable Codex completion uses the documented top-level `notify` callback in `~/.codex/config.toml`, whose `agent-turn-complete` JSON is handled by `mux-beacon codex-notify`.
+- Codex blocking `Stop` hooks require valid JSON on stdout; emit `{}` and no model-visible text.
+- `SessionEnd` must not create a second stale record after a completed turn.
+- Hook adapters must fail open: log local errors without interrupting Claude or Codex.
+
+## tmux and Ghostty
+
+- Keep tmux navigation client-aware and fail closed when the originating client or pane cannot be proven.
+- Pane badges are opt-in per tmux server and must restore the exact prior border settings.
+- Commas inside tmux conditional branches are separators. Use separate style tokens such as `#[fg=blue]#[bold]`, not `#[fg=blue,bold]`, in nested badge conditionals.
+- Ghostty focus and tmux switching must not activate the Mux Beacon GUI as an intermediate step.
+
+## Verification
+
+Run before publishing:
+
+```sh
+swift build
+swift run mux-beacon-self-test
+zsh -n scripts/*.sh
+./scripts/build-app.sh
+codesign --verify --deep --strict "dist/Mux Beacon.app"
+git diff --check
+```
+
+For integration changes, unit fixtures are not sufficient. Install the release build, apply configuration, start a fresh real agent process, and verify `mux-beacon doctor`, the SQLite event, the notification log, and the live tmux rendering. Remove only the exact synthetic or verification records and pane options created by the test.
+
+Screenshots and fixtures must use anonymized demo data. Before public pushes, scan tracked files for credentials and personal paths, then wait for GitHub CI to pass.
