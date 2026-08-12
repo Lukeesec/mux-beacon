@@ -6,12 +6,15 @@ struct MuxBeaconSelfTest {
     static func main() throws {
         let tests: [(String, () throws -> Void)] = [
             ("Codex UserPromptSubmit fixture", testCodexStart),
+            ("Codex turn-complete callback fixture", testCodexCompletion),
             ("Claude background Stop fixture", testClaudeBackground),
             ("Start and permission notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
+            ("Badge format avoids conditional separator collisions", testBadgeFormat),
             ("Superseded pane sessions retire", testSessionReconciliation),
             ("History expires after seven days", testHistoryRetention),
             ("Turn persistence and duration", testStoreFlow),
+            ("Terminal sessions expose no active turn", testActiveEvent),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
             ("CSV escaping", testCSV),
@@ -36,6 +39,15 @@ struct MuxBeaconSelfTest {
         """.utf8)
         let event = try HookNormalizer.parse(source: .codex, data: payload, environment: [:])
         try expect(event.state == .working && event.turnID == "turn_1" && event.preview == "Fix the tests")
+    }
+
+    private static func testCodexCompletion() throws {
+        let payload = Data("""
+        {"type":"agent-turn-complete","thread-id":"thr_123","turn-id":"turn_1","cwd":"/tmp/mux-beacon","last-assistant-message":"Finished the work.\\nDetails follow."}
+        """.utf8)
+        let event = try HookNormalizer.parseCodexNotification(data: payload, environment: [:])
+        try expect(event.state == .ready && event.sessionID == "thr_123")
+        try expect(event.turnID == "turn_1" && event.preview == "Finished the work.")
     }
 
     private static func testClaudeBackground() throws {
@@ -76,6 +88,12 @@ struct MuxBeaconSelfTest {
         }
     }
 
+    private static func testBadgeFormat() throws {
+        try expect(TmuxStateWriter.badgeFormat.contains("● WORKING"))
+        try expect(!TmuxStateWriter.badgeFormat.contains("fg=blue,bold"))
+        try expect(!TmuxStateWriter.badgeFormat.contains("fg=green,bold"))
+    }
+
     private static func testStoreFlow() throws {
         let (directory, store) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -93,6 +111,22 @@ struct MuxBeaconSelfTest {
         try expect(abs(stop.duration - 125) < 0.01 && entryCount == 1)
         let permissions = try FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent("test.sqlite3").path)[.posixPermissions] as? NSNumber
         try expect(permissions?.intValue == 0o600)
+    }
+
+    private static func testActiveEvent() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let start = IncomingAgentEvent(
+            source: .codex, sessionID: "session", turnID: "turn", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working
+        )
+        _ = try store.record(start)
+        try expect(try store.activeEvent(source: .codex, sessionID: "session") != nil)
+        _ = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "session", turnID: "turn", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready
+        ))
+        try expect(try store.activeEvent(source: .codex, sessionID: "session") == nil)
     }
 
     private static func testSessionReconciliation() throws {
@@ -156,6 +190,7 @@ struct MuxBeaconSelfTest {
         defer { try? FileManager.default.removeItem(at: directory) }
         let claude = directory.appendingPathComponent("claude.json")
         let codex = directory.appendingPathComponent("codex.json")
+        let codexConfig = directory.appendingPathComponent("config.toml")
         let malformed = Data("{\"hooks\":{\"UserPromptSubmit\":\"not-an-array\"}}".utf8)
         try malformed.write(to: claude)
         try Data("{}".utf8).write(to: codex)
@@ -163,6 +198,7 @@ struct MuxBeaconSelfTest {
             binaryPath: "/tmp/mux-beacon",
             claudeSettings: claude,
             codexHooks: codex,
+            codexConfig: codexConfig,
             backupDirectory: directory.appendingPathComponent("backups")
         )
         do {
@@ -179,6 +215,7 @@ struct MuxBeaconSelfTest {
         defer { try? FileManager.default.removeItem(at: directory) }
         let claude = directory.appendingPathComponent("claude.json")
         let codex = directory.appendingPathComponent("codex.json")
+        let codexConfig = directory.appendingPathComponent("config.toml")
         let existing: [String: Any] = [
             "permissions": ["defaultMode": "bypassPermissions"],
             "hooks": ["Stop": [["hooks": [["type": "command", "command": "/usr/local/bin/existing"]]]]],
@@ -186,10 +223,12 @@ struct MuxBeaconSelfTest {
         let data = try JSONSerialization.data(withJSONObject: existing)
         try data.write(to: claude)
         try data.write(to: codex)
+        try Data("model = \"gpt-5\"\n".utf8).write(to: codexConfig)
         let installer = ConfigInstaller(
             binaryPath: "/Applications/Mux Beacon.app/Contents/Helpers/mux-beacon",
             claudeSettings: claude,
             codexHooks: codex,
+            codexConfig: codexConfig,
             backupDirectory: directory.appendingPathComponent("backups")
         )
         _ = try installer.install(apply: true)
@@ -197,9 +236,27 @@ struct MuxBeaconSelfTest {
         try expect(second.changes.allSatisfy(\.eventsAdded.isEmpty))
         let installed = try String(contentsOf: codex)
         try expect(installed.contains("existing") && !installed.contains("PermissionRequest"))
+        let installedConfig = try String(contentsOf: codexConfig)
+        try expect(installedConfig.contains("codex-notify") && installedConfig.contains("model = \"gpt-5\""))
+        try expect(!installedConfig.contains("\\/"))
+        try expect(installer.codexNotifyStatus() == .installed)
         _ = try installer.uninstall(apply: true)
         let result = try String(contentsOf: codex)
         try expect(result.contains("existing") && !result.contains("relay --source codex"))
+        let uninstalledConfig = try String(contentsOf: codexConfig)
+        try expect(!uninstalledConfig.contains("codex-notify") && uninstalledConfig.contains("model = \"gpt-5\""))
+
+        try Data("notify = [\"/usr/local/bin/existing-notifier\"]\n".utf8).write(to: codexConfig)
+        let occupied = try installer.install(apply: true)
+        try expect(occupied.warnings.count == 1)
+        try expect(try String(contentsOf: codexConfig).contains("existing-notifier"))
+        try expect(!String(contentsOf: codexConfig).contains("codex-notify"))
+
+        try Data("# old # mux-beacon-managed\nnotify = [\"\\/tmp\\/mux-beacon\", \"codex-notify\"] # mux-beacon-managed\n".utf8).write(to: codexConfig)
+        try expect(installer.codexNotifyStatus() == .needsRepair)
+        _ = try installer.install(apply: true)
+        let repaired = try String(contentsOf: codexConfig)
+        try expect(installer.codexNotifyStatus() == .installed && !repaired.contains("\\/"))
     }
 
     private static func testCSV() throws {

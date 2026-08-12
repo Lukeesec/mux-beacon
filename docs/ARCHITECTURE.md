@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-    A[Claude or Codex lifecycle hook] --> B[mux-beacon relay]
+    A[Claude lifecycle hook or Codex hook/callback] --> B[Mux Beacon CLI adapter]
     B --> C[Normalize event]
     C --> D[(Local SQLite ledger)]
     C --> E[tmux pane user options]
@@ -16,18 +16,20 @@ flowchart LR
     J --> K[Focus Ghostty terminal]
 ```
 
-The hook relay is deliberately passive. It reads one documented JSON object from standard input, writes no model-visible output, and exits successfully even if local notification plumbing fails.
+The hook relay is deliberately passive. It reads one documented JSON object, emits only the empty JSON response required by Codex's blocking `Stop` hook, and exits successfully even if local notification plumbing fails.
 
 ## Normalized lifecycle
 
 | Provider event | Mux Beacon state | Default notification |
 |---|---|---|
-| `UserPromptSubmit` | `working` | On |
+| `UserPromptSubmit` | `working` | Off |
 | `PermissionRequest` | `needsAttention` | Adapter opt-in; notification off |
 | `Stop` | `ready` | On |
 | Claude `Stop` with background tasks/crons | `background` | On |
 | Claude `StopFailure` | `failed` | On |
 | `SessionEnd` before a terminal state | `stale` | Off |
+
+Codex's documented `notify` command supplies `agent-turn-complete` as a completion fallback because some Codex versions do not emit the lifecycle `Stop` hook after each turn. Both inputs normalize to the same `ready` event.
 
 Claude's `prompt_id` and Codex's `turn_id` correlate state changes. When an older provider omits a turn identifier, Mux Beacon updates the newest active turn in that session.
 

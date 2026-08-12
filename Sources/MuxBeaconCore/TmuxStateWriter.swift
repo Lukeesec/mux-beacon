@@ -1,6 +1,13 @@
 import Foundation
 
 public enum TmuxStateWriter {
+    public static let badgeFormat = "#{?#{==:#{@mux_beacon_state},ready},#[fg=green]#[bold]● READY ,#{?#{==:#{@mux_beacon_state},working},#[fg=blue]#[bold]● WORKING ,#{?#{==:#{@mux_beacon_state},needsAttention},#[fg=yellow]#[bold]● ATTENTION ,#{?#{==:#{@mux_beacon_state},failed},#[fg=red]#[bold]● FAILED ,}}}}#[default]#{pane_title} #[dim]#{pane_index}"
+
+    public struct BadgeStatus: Sendable {
+        public var enabled: Bool
+        public var socket: String
+        public var panesWithState: Int
+    }
     private struct BorderBackup: Codable {
         var socket: String
         var status: String
@@ -58,10 +65,27 @@ public enum TmuxStateWriter {
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupURL.path)
         }
 
-        let badge = "#{?#{==:#{@mux_beacon_state},ready},#[fg=green,bold]● READY ,#{?#{==:#{@mux_beacon_state},working},#[fg=blue,bold]● WORKING ,#{?#{==:#{@mux_beacon_state},needsAttention},#[fg=yellow,bold]● ATTENTION ,#{?#{==:#{@mux_beacon_state},failed},#[fg=red,bold]● FAILED ,}}}}#[default]#{pane_title} #[dim]#{pane_index}"
         try require(ProcessRunner.run(executable, ["-S", socket, "set-option", "-g", "pane-border-status", "top"]))
-        try require(ProcessRunner.run(executable, ["-S", socket, "set-option", "-g", "pane-border-format", badge]))
+        try require(ProcessRunner.run(executable, ["-S", socket, "set-option", "-g", "pane-border-format", badgeFormat]))
         _ = try? ProcessRunner.run(executable, ["-S", socket, "refresh-client", "-S"])
+    }
+
+    public static func badgeStatus() throws -> BadgeStatus {
+        let socket = try currentSocket()
+        guard let executable = TmuxInspector.executable else { throw RoutingError.tmux("tmux is not installed") }
+        let status = try option(executable, socket, "pane-border-status")
+        let format = try option(executable, socket, "pane-border-format")
+        let panes = try ProcessRunner.run(
+            executable,
+            ["-S", socket, "list-panes", "-a", "-F", "#{@mux_beacon_state}"]
+        )
+        try require(panes)
+        let panesWithState = panes.stdout.split(whereSeparator: \.isNewline).filter { !$0.isEmpty }.count
+        return BadgeStatus(
+            enabled: status != "off" && format.contains("@mux_beacon_state"),
+            socket: socket,
+            panesWithState: panesWithState
+        )
     }
 
     public static func disableBadges() throws {

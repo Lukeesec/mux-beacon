@@ -10,6 +10,8 @@ struct MuxBeaconCLI {
             switch command {
             case "relay":
                 try relay(Array(arguments.dropFirst()))
+            case "codex-notify":
+                try codexNotify(Array(arguments.dropFirst()))
             case "install":
                 try install(Array(arguments.dropFirst()), uninstall: false)
             case "uninstall":
@@ -52,8 +54,8 @@ struct MuxBeaconCLI {
                 throw CLIError.usage("Unknown command: \(command)")
             }
         } catch {
-            if command == "relay" {
-                BeaconLog.write("relay error: \(error.localizedDescription)")
+            if command == "relay" || command == "codex-notify" {
+                BeaconLog.write("\(command) error: \(error.localizedDescription)")
                 exit(0)
             }
             FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
@@ -68,7 +70,28 @@ struct MuxBeaconCLI {
         else { throw CLIError.usage("relay requires --source claude|codex") }
         let input = FileHandle.standardInput.readDataToEndOfFile()
         let incoming = try HookNormalizer.parse(source: source, data: input)
-        let event = try EventStore().record(incoming, storePreview: BeaconPreferences.shared.storePreviews)
+        try deliver(incoming)
+        if source == .codex, incoming.hookEventName == "Stop" {
+            FileHandle.standardOutput.write(Data("{}\n".utf8))
+        }
+    }
+
+    private static func codexNotify(_ arguments: [String]) throws {
+        guard let payload = arguments.last else { throw CLIError.usage("codex-notify requires Codex's JSON payload") }
+        let incoming = try HookNormalizer.parseCodexNotification(data: Data(payload.utf8))
+        try deliver(incoming)
+        HookReceiptWriter.recordCodexCompletion(at: incoming.timestamp)
+    }
+
+    private static func deliver(_ incoming: IncomingAgentEvent) throws {
+        let store = EventStore()
+        if incoming.hookEventName == "SessionEnd",
+           try store.activeEvent(source: incoming.source, sessionID: incoming.sessionID) == nil {
+            HookReceiptWriter.record(source: incoming.source, eventName: incoming.hookEventName, at: incoming.timestamp)
+            return
+        }
+        let event = try store.record(incoming, storePreview: BeaconPreferences.shared.storePreviews)
+        HookReceiptWriter.record(source: incoming.source, eventName: incoming.hookEventName, at: incoming.timestamp)
         TmuxStateWriter.update(event)
         AppLauncher.launchIfAvailable()
         EventBroadcaster.post(eventID: event.id)
@@ -88,6 +111,7 @@ struct MuxBeaconCLI {
             print("  \(change.path): \(events)")
         }
         for backup in report.backups { print("  backup: \(backup)") }
+        for warning in report.warnings { print("  warning: \(warning)") }
         if !uninstall, apply {
             print("\nCodex: open /hooks once and trust the new Mux Beacon hooks.")
             print("No tmux restart is required.")
@@ -103,9 +127,20 @@ struct MuxBeaconCLI {
         print("  Ghostty: \(ghostty ?? "not found")")
         let notificationStatus = (try? String(contentsOf: BeaconPaths.notificationStatus).trimmingCharacters(in: .whitespacesAndNewlines)) ?? "unknown (launch the app once)"
         print("  notifications: \(notificationStatus)")
-        for (source, installed, path) in ConfigInstaller(binaryPath: executablePath()).status() {
+        let installer = ConfigInstaller(binaryPath: executablePath())
+        for (source, installed, path) in installer.status() {
             print("  \(source.displayName) hook: \(installed ? "installed" : "not installed") (\(path))")
+            print("    last received: \(hookReceipt(source: source))")
         }
+        let notifyStatus: String
+        switch installer.codexNotifyStatus() {
+        case .installed: notifyStatus = "installed"
+        case .available: notifyStatus = "not installed"
+        case .occupied: notifyStatus = "another command is configured"
+        case .needsRepair: notifyStatus = "needs reinstall"
+        }
+        print("  Codex completion callback: \(notifyStatus) (\(installer.codexConfig.path))")
+        print("    last received: \(completionReceipt())")
         let count = try EventStore().fetchEvents().count
         print("  stored events: \(count)")
     }
@@ -120,6 +155,24 @@ struct MuxBeaconCLI {
             let unread = event.acknowledged ? " " : "•"
             print("\(unread) \(event.source.displayName.padding(toLength: 7, withPad: " ", startingAt: 0)) \(event.state.displayName.padding(toLength: 16, withPad: " ", startingAt: 0)) \(event.durationLabel.padding(toLength: 8, withPad: " ", startingAt: 0)) \(event.projectName) — \(event.routeLabel)")
         }
+    }
+
+    private static func hookReceipt(source: AgentSource) -> String {
+        guard
+            let value = try? String(contentsOf: BeaconPaths.hookReceipt(source: source), encoding: .utf8),
+            !value.isEmpty
+        else { return "never" }
+        let fields = value.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t", maxSplits: 1)
+        guard fields.count == 2 else { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return "\(fields[1]) at \(fields[0])"
+    }
+
+    private static func completionReceipt() -> String {
+        guard let value = try? String(contentsOf: BeaconPaths.codexCompletionReceipt, encoding: .utf8) else {
+            return "never"
+        }
+        let date = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return date.isEmpty ? "never" : date
     }
 
     private static func health() throws {
@@ -211,9 +264,17 @@ struct MuxBeaconCLI {
     private static func tmux(_ arguments: [String]) throws {
         switch arguments.first ?? "popup" {
         case "popup": try TmuxStateWriter.openPopup(binaryPath: executablePath())
-        case "enable-badges": try TmuxStateWriter.enableBadges()
-        case "disable-badges": try TmuxStateWriter.disableBadges()
-        default: throw CLIError.usage("tmux expects popup, enable-badges, or disable-badges")
+        case "enable-badges":
+            try TmuxStateWriter.enableBadges()
+            let status = try TmuxStateWriter.badgeStatus()
+            print("Enabled pane-border badges for this tmux server (\(status.panesWithState) pane\(status.panesWithState == 1 ? "" : "s") currently tracked).")
+        case "disable-badges":
+            try TmuxStateWriter.disableBadges()
+            print("Restored the saved pane-border settings.")
+        case "badge-status", "badges-status":
+            let status = try TmuxStateWriter.badgeStatus()
+            print("Pane-border badges: \(status.enabled ? "enabled" : "disabled") (\(status.panesWithState) pane\(status.panesWithState == 1 ? "" : "s") currently tracked).")
+        default: throw CLIError.usage("tmux expects popup, enable-badges, disable-badges, or badge-status")
         }
     }
 
@@ -300,7 +361,7 @@ struct MuxBeaconCLI {
           mux-beacon demo                    Seed anonymized UI demo data
           mux-beacon jump-last               Open the newest unread agent
           mux-beacon export --format json|csv [--output PATH]
-          mux-beacon tmux popup|enable-badges|disable-badges
+          mux-beacon tmux popup|enable-badges|disable-badges|badge-status
 
         Completion and failure notifications are enabled by default. Start and
         PermissionRequest notifications are off by default.

@@ -7,6 +7,8 @@
 - Start notifications now opt-in; completion and failure remain enabled by default.
 - CLI controls for individual notification types and opening the native GUI.
 - Persistent-alert guidance and improved Applications/Launch Services registration.
+- Reliable Codex completion delivery through its documented turn-complete callback.
+- Correct tmux badge formatting plus a `badge-status` diagnostic.
 
 ## 0.1.0 — 2026-08-11
 

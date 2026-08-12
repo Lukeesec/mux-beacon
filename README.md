@@ -4,7 +4,7 @@
 
 Know when terminal agents need you—and get back to the exact tmux target.
 
-Mux Beacon is a native macOS menu-bar inbox for Claude Code and Codex. It uses first-class lifecycle hooks, records local turn duration, shows optional pane-border badges, and makes completion notifications actionable without taking over your tmux window names.
+Mux Beacon is a native macOS menu-bar inbox for Claude Code and Codex. It uses documented lifecycle hooks and completion callbacks, records local turn duration, shows optional pane-border badges, and makes notifications actionable.
 
 ![Mux Beacon inbox showing Claude and Codex agents grouped by state](docs/assets/mux-beacon-inbox.png)
 
@@ -28,7 +28,7 @@ prompt submitted → working → ready / failed
 
 - macOS 13 or newer
 - tmux 3.2 or newer
-- Claude Code with hooks, or Codex CLI with hooks
+- Claude Code with hooks, or Codex CLI with hooks and its completion callback
 - Ghostty 1.3+ for exact window/tab focus; other terminals still receive the inbox and tmux metadata
 
 ## Install locally
@@ -47,10 +47,11 @@ The first `install` is a dry run. Applying the installation:
 
 - adds owned handlers to `~/.claude/settings.json`;
 - adds owned handlers to `~/.codex/hooks.json`;
-- does **not** replace Codex's legacy `notify` command or rewrite `config.toml`;
-- writes timestamped backups before every change.
+- adds Codex's documented `agent-turn-complete` callback to `~/.codex/config.toml` when the `notify` slot is free;
+- preserves an existing Codex `notify` command and prints a warning instead of replacing it;
+- writes timestamped backups before changing existing files.
 
-Codex asks you to review new hooks once. Open `/hooks` and trust the Mux Beacon definitions.
+Codex asks you to review new hooks once. Open `/hooks` and trust the Mux Beacon definitions. The completion callback covers Codex versions where the lifecycle `Stop` hook is not emitted after each turn.
 
 Permission events are deferred by default. Users who want them can install the adapter explicitly and then enable its notification in Settings:
 
@@ -128,9 +129,12 @@ The state appears at the left of each pane's top border—blue `● WORKING`, gr
 mux-beacon tmux popup
 mux-beacon tmux enable-badges
 mux-beacon tmux disable-badges
+mux-beacon tmux badge-status
 ```
 
-Badges are opt-in. Mux Beacon saves the exact existing `pane-border-status` and `pane-border-format`, changes neither `window-status-format` nor window names, and restores the saved values when disabled.
+`mux-beacon tmux popup` opens a temporary tmux overlay of recent agent activity. Enter a row number to jump to that agent; press Return to close it.
+
+Badges are opt-in and apply to the current tmux server. Run `enable-badges` once from inside that server; `badge-status` reports whether borders are enabled and how many panes have tracked state. Mux Beacon saves the exact existing `pane-border-status` and `pane-border-format` and restores them with `disable-badges`.
 
 ## Time records
 

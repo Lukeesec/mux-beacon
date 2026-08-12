@@ -170,6 +170,10 @@ public final class EventStore: @unchecked Sendable {
         }
     }
 
+    public func activeEvent(source: AgentSource, sessionID: String) throws -> AgentEvent? {
+        try findCurrent(source: source, sessionID: sessionID, turnID: nil)
+    }
+
     public func acknowledge(id: String) throws {
         guard var event = try fetch(id: id) else { return }
         event.acknowledged = true

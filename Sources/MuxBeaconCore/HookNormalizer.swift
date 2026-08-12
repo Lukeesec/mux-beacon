@@ -74,6 +74,35 @@ public enum HookNormalizer {
             ghostty: shouldCaptureOrigin ? GhosttyInspector.captureFocusedTerminal(environment: environment) : nil
         )
     }
+
+    public static func parseCodexNotification(
+        data: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        now: Date = Date()
+    ) throws -> IncomingAgentEvent {
+        guard
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw HookNormalizerError.invalidJSON }
+        guard object.string("type") == "agent-turn-complete" else {
+            throw HookNormalizerError.missingField("type=agent-turn-complete")
+        }
+        guard let sessionID = object.string("thread-id") ?? object.string("thread_id"), !sessionID.isEmpty else {
+            throw HookNormalizerError.missingField("thread-id")
+        }
+
+        return IncomingAgentEvent(
+            source: .codex,
+            sessionID: sessionID,
+            turnID: object.string("turn-id") ?? object.string("turn_id"),
+            hookEventName: "Stop",
+            cwd: object.string("cwd") ?? FileManager.default.currentDirectoryPath,
+            model: nil,
+            state: .ready,
+            timestamp: now,
+            preview: object.string("last-assistant-message")?.firstLine(limit: 180),
+            tmux: TmuxInspector.capture(environment: environment)
+        )
+    }
 }
 
 private extension Dictionary where Key == String, Value == Any {
