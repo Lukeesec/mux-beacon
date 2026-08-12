@@ -68,18 +68,18 @@ struct MuxBeaconSelfTest {
 
     private static func testRouteLabel() throws {
         let tmux = TmuxTarget(
-            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Vigil",
-            windowID: "@7", windowIndex: 7, windowName: "AINotifier",
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Atlas",
+            windowID: "@7", windowIndex: 7, windowName: "agents",
             paneID: "%2", paneIndex: 2, paneTitle: "agent", panePath: "/tmp"
         )
         let event = AgentEvent(
             id: "route", source: .codex, sessionID: "session", state: .ready,
             hookEventName: "Stop", cwd: "/tmp", projectName: "project", tmux: tmux
         )
-        try expect(event.routeLabel == "Vigil › AINotifier" && !event.routeLabel.contains("pane"))
+        try expect(event.routeLabel == "Atlas › agents" && !event.routeLabel.contains("pane"))
         var demo = event
         demo.isDemo = true
-        try expect(demo.routeLabel == "Vigil › AINotifier · demo")
+        try expect(demo.routeLabel == "Atlas › agents · demo")
         do {
             try TargetRouter.jump(to: demo)
             throw SelfTestError.failedExpectation
@@ -133,7 +133,7 @@ struct MuxBeaconSelfTest {
         let (directory, store) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: directory) }
         let target = TmuxTarget(
-            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Vigil",
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Atlas",
             windowID: "@1", windowIndex: 1, windowName: "agents",
             paneID: "%1", paneIndex: 0, paneTitle: "agent", panePath: "/tmp"
         )

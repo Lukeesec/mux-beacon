@@ -9,7 +9,7 @@ swift run mux-beacon-self-test
 codesign --verify --deep --strict "dist/Mux Beacon.app"
 ```
 
-This machine's standalone Command Line Tools distribution does not ship XCTest or Swift Testing modules, so the repository includes a dependency-free self-test executable. It validates provider fixtures, state persistence, duration, installer idempotency/uninstall, and export escaping.
+The self-test executable is dependency-free so it also runs on standalone Command Line Tools installs, which do not ship XCTest or Swift Testing. It validates provider fixtures, state persistence, duration, installer idempotency/uninstall, and export escaping.
 
 ## Deterministic UI data
 
@@ -25,13 +25,7 @@ MUX_BEACON_SCREENSHOT_PATH="$PWD/docs/assets/mux-beacon-inbox.png" \
 "dist/Mux Beacon.app/Contents/MacOS/MuxBeaconApp" --screenshot
 ```
 
-The app snapshots only its own content view.
-
-## Visual thesis
-
-Mux Beacon is a calm native instrument panel: graphite material, crisp operational typography, a single blue brand accent, and semantic state color only where it speeds scanning.
-
-The working surface leads. Motion is limited to working-state breathing, event insertion/removal, and the tmux target flash, all respecting Reduce Motion.
+The app snapshots only its own content view. Use `MUX_BEACON_HOME` to point the app at a scratch data directory so screenshots never include real events.
 
 ## Release signing
 

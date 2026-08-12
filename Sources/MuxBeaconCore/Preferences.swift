@@ -73,10 +73,10 @@ public enum DemoSeeder {
     public static func seed(store: EventStore, now: Date = Date()) throws -> [AgentEvent] {
         try store.deleteDemoEvents()
         let samples: [(AgentSource, AgentState, String, TimeInterval, String, Int, String, Int)] = [
-            (.claude, .needsAttention, "vigil", 94, "Vigil", 3, "api-guardrails", 1),
+            (.claude, .needsAttention, "payments-api", 94, "Payments", 3, "api-review", 1),
             (.codex, .ready, "mux-beacon", 751, "Beacon", 1, "native-app", 0),
-            (.claude, .working, "ministry-outreach-sender", 228, "Outreach", 7, "deliverability", 0),
-            (.codex, .failed, "ai-proxy", 43, "Infra", 2, "deploy-debug", 2),
+            (.claude, .working, "docs-pipeline", 228, "Docs", 7, "site-build", 0),
+            (.codex, .failed, "edge-cache", 43, "Infra", 2, "deploy-debug", 2),
         ]
         return try samples.enumerated().map { index, sample in
             let started = now.addingTimeInterval(-sample.3)

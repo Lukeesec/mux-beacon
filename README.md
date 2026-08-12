@@ -28,7 +28,7 @@ prompt submitted → working → ready / failed
 
 - macOS 13 or newer
 - tmux 3.2 or newer
-- Claude Code with hooks, or Codex CLI with hooks and its completion callback
+- A recent Claude Code with lifecycle hooks (including `StopFailure`), or Codex CLI with hooks and its completion callback
 - Ghostty 1.3+ for exact window/tab focus; other terminals still receive the inbox and tmux metadata
 
 ## Install locally
@@ -37,13 +37,13 @@ prompt submitted → working → ready / failed
 git clone https://github.com/Lukeesec/mux-beacon.git
 cd mux-beacon
 ./scripts/install-local.sh
-mux-beacon install
-mux-beacon install --apply
+mux-beacon install          # dry run: preview the hook changes
+mux-beacon install --apply  # write them
 ```
 
 The app installs into `/Applications` when writable, otherwise `~/Applications`, and registers with Launch Services. Finder can open it directly; `mux-beacon gui` is the reliable launcher for local ad-hoc builds that Spotlight has not indexed yet.
 
-The first `install` is a dry run. Applying the installation:
+Applying the installation:
 
 - adds owned handlers to `~/.claude/settings.json`;
 - adds owned handlers to `~/.codex/hooks.json`;
@@ -174,6 +174,10 @@ The inbox checks target health every 30 seconds and whenever **Refresh** is clic
 
 See [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
 
+## Prebuilt releases
+
+Tagged releases attach an app zip built by CI. It is ad-hoc signed and not notarized, so macOS blocks the first launch of a downloaded copy: approve it under **System Settings → Privacy & Security → Open Anyway**, or build from source as shown above (local builds are not quarantined).
+
 ## Privacy and security
 
 - Local-only SQLite database; no telemetry.
@@ -181,6 +185,11 @@ See [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), an
 - No approval or denial actions from notifications.
 - Opaque event IDs in notification metadata; no shell commands or tmux labels in URLs.
 - Hook commands return success without steering the agent.
+
+## Roadmap
+
+- Developer ID signing and notarization for release builds, so downloads pass Gatekeeper without manual approval.
+- Clockify export adapter on the existing provider boundary ([design](docs/CLOCKIFY.md)).
 
 ## License
 

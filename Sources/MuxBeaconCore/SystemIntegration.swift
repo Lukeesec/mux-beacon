@@ -30,6 +30,23 @@ public enum ProcessRunner {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
+
+        // Drain both pipes while the child runs; reading after exit deadlocks
+        // once a child fills the 64 KB pipe buffer.
+        var stdoutData = Data()
+        var stderrData = Data()
+        let readers = DispatchGroup()
+        readers.enter()
+        DispatchQueue.global().async {
+            stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+            readers.leave()
+        }
+        readers.enter()
+        DispatchQueue.global().async {
+            stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            readers.leave()
+        }
+
         try process.run()
         if let timeout {
             let deadline = Date().addingTimeInterval(timeout)
@@ -37,16 +54,18 @@ public enum ProcessRunner {
             if process.isRunning {
                 process.terminate()
                 process.waitUntilExit()
+                readers.wait()
                 throw ProcessRunnerError.timedOut(executable)
             }
         } else {
             process.waitUntilExit()
         }
+        readers.wait()
         return CommandResult(
             status: process.terminationStatus,
-            stdout: String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            stdout: String(decoding: stdoutData, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-            stderr: String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            stderr: String(decoding: stderrData, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }

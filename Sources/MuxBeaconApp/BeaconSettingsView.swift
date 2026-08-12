@@ -68,7 +68,8 @@ struct BeaconSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 520)
+        .frame(minWidth: 500, minHeight: 500)
+        .background(Color(nsColor: .windowBackgroundColor))
         .alert("Could not update login item", isPresented: Binding(
             get: { launchError != nil },
             set: { if !$0 { launchError = nil } }

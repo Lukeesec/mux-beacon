@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-08-12
 
 - Distinctive native app and notification icon.
 - Project-first notification hierarchy with native bold title treatment.
@@ -9,6 +9,9 @@
 - Persistent-alert guidance and improved Applications/Launch Services registration.
 - Reliable Codex completion delivery through its documented turn-complete callback.
 - Correct tmux badge formatting plus a `badge-status` diagnostic.
+- Fully fictional demo fixtures and regenerated documentation screenshots.
+- Subprocess output is drained while commands run, and deep-link event IDs are no longer double-decoded.
+- Documented the unsigned-release Gatekeeper caveat and the signing/notarization roadmap.
 
 ## 0.1.0 — 2026-08-11
 

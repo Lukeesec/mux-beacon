@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
         let model = BeaconAppModel.shared
         let settingsMode = ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_VIEW"] == "settings"
-        let size = settingsMode ? NSSize(width: 520, height: 520) : NSSize(width: 450, height: 620)
+        let size = settingsMode ? NSSize(width: 540, height: 960) : NSSize(width: 450, height: 620)
         let rootView = settingsMode
             ? AnyView(BeaconSettingsView().frame(width: size.width, height: size.height))
             : AnyView(BeaconPanel(
@@ -106,9 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 openSettings: { [weak self] in self?.openSettingsWindow() }
             ).frame(width: size.width, height: size.height))
         let controller = NSHostingController(rootView: rootView)
+        // The settings form paints no material of its own, so the under-titlebar
+        // region of a full-size content view captures as a transparent band.
+        var styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        if !settingsMode { styleMask.insert(.fullSizeContentView) }
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: styleMask,
             backing: .buffered,
             defer: false
         )
@@ -158,7 +162,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private func capture(window: NSWindow, outputPath: String) {
         guard let view = window.contentView else { return }
         let bounds = view.bounds
-        guard let representation = view.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        // Render at a fixed 2x so screenshots are identical regardless of the
+        // backing scale of whichever screen the window landed on.
+        let scale: CGFloat = 2
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(bounds.width * scale),
+            pixelsHigh: Int(bounds.height * scale),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .calibratedRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return }
+        representation.size = bounds.size
         view.cacheDisplay(in: bounds, to: representation)
         guard let data = representation.representation(using: .png, properties: [:]) else { return }
         do {
@@ -183,8 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             return
         }
         guard url.host == "event" else { return }
+        // URL.pathComponents already percent-decodes; decoding again corrupts IDs containing "%".
         let eventID = url.pathComponents.dropFirst().joined(separator: "/")
-            .removingPercentEncoding ?? ""
         guard !eventID.isEmpty else { return }
         do {
             let store = EventStore()

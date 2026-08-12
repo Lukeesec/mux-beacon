@@ -49,7 +49,7 @@ struct MuxBeaconCLI {
             case "help", "--help", "-h":
                 printHelp()
             case "version", "--version", "-v":
-                print("mux-beacon 0.2.0")
+                print("mux-beacon \(BeaconVersion.current)")
             default:
                 throw CLIError.usage("Unknown command: \(command)")
             }

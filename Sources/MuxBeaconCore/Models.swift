@@ -1,5 +1,11 @@
 import Foundation
 
+/// Single source of truth for the CLI-reported version.
+/// Keep Packaging/Info.plist's CFBundleShortVersionString and CHANGELOG.md in sync.
+public enum BeaconVersion {
+    public static let current = "0.2.0"
+}
+
 public enum AgentSource: String, Codable, CaseIterable, Sendable {
     case claude
     case codex
