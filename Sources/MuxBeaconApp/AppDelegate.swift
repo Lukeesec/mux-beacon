@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             defer: false
         )
         window.title = "Mux Beacon Settings"
+        // AppKit's default releases a closed window while our strong reference
+        // still exists; the over-release crashes later in animation teardown.
+        window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentViewController = controller
         window.contentMinSize = NSSize(width: 500, height: 500)
@@ -117,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             defer: false
         )
         window.title = "Mux Beacon"
+        window.isReleasedWhenClosed = false
         window.delegate = self
         window.titlebarAppearsTransparent = true
         window.contentViewController = controller

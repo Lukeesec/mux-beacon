@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — Unreleased
+
+- Fix a crash when reopening or closing the inbox and settings windows: closed
+  windows were over-released (`isReleasedWhenClosed`), corrupting later
+  window-animation teardown.
+
 ## 0.2.0 — 2026-08-12
 
 - Distinctive native app and notification icon.
