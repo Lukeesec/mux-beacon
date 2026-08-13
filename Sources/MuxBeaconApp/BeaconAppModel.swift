@@ -132,7 +132,7 @@ final class BeaconAppModel: ObservableObject {
         case .failed: stateLabel = "Failed"
         case .stale: return
         }
-        content.title = "\(event.projectName) — \(stateLabel)"
+        content.title = "\(event.state.notificationGlyph) \(event.projectName) — \(stateLabel)"
         content.subtitle = event.state == .working
             ? event.source.displayName
             : "\(event.source.displayName) · \(event.durationLabel)"

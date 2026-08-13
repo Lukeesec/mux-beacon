@@ -11,6 +11,7 @@ struct MuxBeaconSelfTest {
             ("Start and permission notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
             ("Badge format avoids conditional separator collisions", testBadgeFormat),
+            ("Notification glyphs match the badge palette", testNotificationGlyphs),
             ("Superseded pane sessions retire", testSessionReconciliation),
             ("History expires after seven days", testHistoryRetention),
             ("Turn persistence and duration", testStoreFlow),
@@ -86,6 +87,15 @@ struct MuxBeaconSelfTest {
         } catch RoutingError.demo {
             // Demo events must never attempt live tmux navigation.
         }
+    }
+
+    private static func testNotificationGlyphs() throws {
+        try expect(AgentState.ready.notificationGlyph == "🟢")
+        try expect(AgentState.failed.notificationGlyph == "🔴")
+        try expect(AgentState.needsAttention.notificationGlyph == "🟡")
+        try expect(AgentState.working.notificationGlyph == "🔵")
+        try expect(!AgentState.background.notificationGlyph.isEmpty)
+        try expect(AgentState.stale.notificationGlyph.isEmpty)
     }
 
     private static func testBadgeFormat() throws {

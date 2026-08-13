@@ -87,7 +87,7 @@ Mux Beacon is hook-driven rather than a process scanner. It begins tracking an a
 
 ![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
-macOS renders the project and state as the bold title, with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working), with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
 
 Demo records are marked `DEMO` and intentionally have no live jump target. The GUI keeps sample-data controls out of the normal workflow; remove samples with `mux-beacon clear-demo`.
 

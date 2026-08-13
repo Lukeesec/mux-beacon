@@ -3,7 +3,7 @@ import Foundation
 /// Single source of truth for the CLI-reported version.
 /// Keep Packaging/Info.plist's CFBundleShortVersionString and CHANGELOG.md in sync.
 public enum BeaconVersion {
-    public static let current = "0.2.1"
+    public static let current = "0.2.2"
 }
 
 public enum AgentSource: String, Codable, CaseIterable, Sendable {
@@ -47,6 +47,19 @@ public enum AgentState: String, Codable, CaseIterable, Sendable {
         case .ready: "checkmark.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
         case .stale: "questionmark.circle"
+        }
+    }
+
+    /// Colored dot for notification titles, matching the tmux badge palette.
+    /// Notification text is plain, so the emoji is the only color channel available.
+    public var notificationGlyph: String {
+        switch self {
+        case .working: "🔵"
+        case .needsAttention: "🟡"
+        case .background: "🟣"
+        case .ready: "🟢"
+        case .failed: "🔴"
+        case .stale: ""
         }
     }
 }

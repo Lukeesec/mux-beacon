@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 — Unreleased
+
+- Notification titles lead with a color dot matching the tmux badge palette,
+  so state survives long project names and reads at a glance.
+- Removed the no-op `summaryArgument` from notification content.
+
 ## 0.2.1 — 2026-08-12
 
 - Fix a crash when reopening or closing the inbox and settings windows: closed
