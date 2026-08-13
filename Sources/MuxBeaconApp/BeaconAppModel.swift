@@ -141,7 +141,6 @@ final class BeaconAppModel: ObservableObject {
             : event.routeLabel
         content.categoryIdentifier = "AGENT_EVENT"
         content.threadIdentifier = "\(event.source.rawValue):\(event.sessionID)"
-        content.summaryArgument = event.projectName
         content.targetContentIdentifier = event.id
         content.userInfo = ["eventID": event.id]
         if preferences.notificationSound { content.sound = .default }
