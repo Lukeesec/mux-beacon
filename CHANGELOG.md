@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1 — Unreleased
+## 0.2.1 — 2026-08-12
 
 - Fix a crash when reopening or closing the inbox and settings windows: closed
   windows were over-released (`isReleasedWhenClosed`), corrupting later
