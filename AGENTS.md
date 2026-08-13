@@ -12,6 +12,7 @@
 
 - Claude completion arrives through its `Stop` lifecycle hook.
 - Codex `UserPromptSubmit` arrives through `~/.codex/hooks.json`, but do not assume Codex emits `Stop` after every turn. Reliable Codex completion uses the documented top-level `notify` callback in `~/.codex/config.toml`, whose `agent-turn-complete` JSON is handled by `mux-beacon codex-notify`.
+- Codex completion turn IDs do not match `UserPromptSubmit` prompt IDs, and Codex fires completions for every internal task, including automation sessions with no user prompt. Completions with unmatched IDs merge into the session's newest active turn; completions for untracked sessions must stay quiet (recorded pre-acknowledged, never notified).
 - Codex blocking `Stop` hooks require valid JSON on stdout; emit `{}` and no model-visible text.
 - `SessionEnd` must not create a second stale record after a completed turn.
 - Hook adapters must fail open: log local errors without interrupting Claude or Codex.

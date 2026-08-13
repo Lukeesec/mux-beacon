@@ -32,11 +32,17 @@ public final class EventStore: @unchecked Sendable {
 
     @discardableResult
     public func record(_ incoming: IncomingAgentEvent, storePreview: Bool = false) throws -> AgentEvent {
-        let current = try findCurrent(
+        var current = try findCurrent(
             source: incoming.source,
             sessionID: incoming.sessionID,
             turnID: incoming.turnID
         )
+        // Codex's completion callback uses a different ID namespace than its
+        // prompt hook, so an unmatched turn ID still belongs to the session's
+        // newest active turn.
+        if current == nil, incoming.turnID != nil, incoming.hookEventName != "UserPromptSubmit" {
+            current = try findCurrent(source: incoming.source, sessionID: incoming.sessionID, turnID: nil)
+        }
         let event: AgentEvent
 
         if incoming.hookEventName == "UserPromptSubmit" {
@@ -84,6 +90,11 @@ public final class EventStore: @unchecked Sendable {
                 startedAt: incoming.timestamp,
                 updatedAt: incoming.timestamp,
                 completedAt: incoming.state.isTerminal ? incoming.timestamp : nil,
+                // A terminal event for a session with no tracked prompt is
+                // provider chatter (for example Codex automation tasks), not a
+                // turn the user is waiting on. Keep it in History without
+                // notifying or counting as unread.
+                acknowledged: incoming.state.isTerminal,
                 isDemo: incoming.isDemo,
                 tmux: incoming.tmux,
                 ghostty: incoming.ghostty,

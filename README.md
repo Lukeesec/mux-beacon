@@ -81,7 +81,7 @@ mux-beacon status
 
 The app and demo require no tmux restart. Hooks may require a new or reloaded agent process.
 
-Mux Beacon is hook-driven rather than a process scanner. It begins tracking an agent when a hook-enabled prompt is submitted; it cannot reconstruct turns that were already running before installation. Merely launching Claude or Codex does not produce a start event.
+Mux Beacon is hook-driven rather than a process scanner. It begins tracking an agent when a hook-enabled prompt is submitted; it cannot reconstruct turns that were already running before installation. Merely launching Claude or Codex does not produce a start event. Completions from sessions Mux Beacon never saw a prompt for — such as Codex automation or background task turns — are recorded quietly under History and do not notify.
 
 ## Notification content
 

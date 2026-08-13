@@ -31,7 +31,7 @@ The hook relay is deliberately passive. It reads one documented JSON object, emi
 
 Codex's documented `notify` command supplies `agent-turn-complete` as a completion fallback because some Codex versions do not emit the lifecycle `Stop` hook after each turn. Both inputs normalize to the same `ready` event.
 
-Claude's `prompt_id` and Codex's `turn_id` correlate state changes. When an older provider omits a turn identifier, Mux Beacon updates the newest active turn in that session.
+Claude's `prompt_id` and Codex's `turn_id` correlate state changes. When a completion's identifier does not match a tracked turn — Codex's completion callback uses a different ID namespace than its prompt hook — Mux Beacon updates the newest active turn in that session instead. Terminal events for sessions with no tracked prompt at all, such as Codex automation task completions, are recorded pre-acknowledged: they appear under History but never notify or count as unread.
 
 ## Stored data
 

@@ -199,6 +199,22 @@ struct MuxBeaconCLI {
         }
         let testID = UUID().uuidString
         let sessionID = "mux-beacon-test-\(testID)"
+        let store = EventStore()
+        if state != .working {
+            // Untracked completions record quietly, so give the synthetic
+            // terminal event a tracked start it can merge into.
+            _ = try store.record(IncomingAgentEvent(
+                source: source,
+                sessionID: sessionID,
+                turnID: testID,
+                hookEventName: "UserPromptSubmit",
+                cwd: FileManager.default.currentDirectoryPath,
+                model: "test-model",
+                state: .working,
+                timestamp: Date().addingTimeInterval(-75),
+                preview: "Synthetic Mux Beacon test event"
+            ))
+        }
         let incoming = IncomingAgentEvent(
             source: source,
             sessionID: sessionID,
@@ -212,7 +228,7 @@ struct MuxBeaconCLI {
             tmux: TmuxInspector.capture(environment: ProcessInfo.processInfo.environment),
             ghostty: hook == "UserPromptSubmit" ? GhosttyInspector.captureFocusedTerminal(environment: ProcessInfo.processInfo.environment) : nil
         )
-        let event = try EventStore().record(incoming)
+        let event = try store.record(incoming)
         TmuxStateWriter.update(event)
         AppLauncher.launchIfAvailable()
         EventBroadcaster.post(eventID: event.id)

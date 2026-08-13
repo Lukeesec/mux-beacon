@@ -4,6 +4,13 @@
 
 - Notification titles lead with a color dot matching the tmux badge palette,
   so state survives long project names and reads at a glance.
+- Codex completions whose turn ID does not match the prompt hook's ID now merge
+  into the session's active turn, fixing zero-second durations and lingering
+  Working entries.
+- Completions from sessions with no tracked prompt (for example Codex
+  automation tasks) are recorded quietly in History instead of notifying.
+- `mux-beacon test` seeds a tracked start so synthetic terminal events still
+  notify and show a duration.
 - Removed the no-op `summaryArgument` from notification content.
 
 ## 0.2.1 — 2026-08-12

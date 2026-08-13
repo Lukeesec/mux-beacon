@@ -16,6 +16,8 @@ struct MuxBeaconSelfTest {
             ("History expires after seven days", testHistoryRetention),
             ("Turn persistence and duration", testStoreFlow),
             ("Terminal sessions expose no active turn", testActiveEvent),
+            ("Mismatched completion IDs merge into the active turn", testSessionFallbackMerge),
+            ("Untracked completions stay quiet in history", testUntrackedCompletionQuiet),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
             ("CSV escaping", testCSV),
@@ -137,6 +139,35 @@ struct MuxBeaconSelfTest {
             cwd: "/tmp/project", model: nil, state: .ready
         ))
         try expect(try store.activeEvent(source: .codex, sessionID: "session") == nil)
+    }
+
+    private static func testSessionFallbackMerge() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let startedAt = Date(timeIntervalSince1970: 500)
+        let start = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "thread", turnID: "prompt-1", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working, timestamp: startedAt
+        ))
+        // Codex's turn-complete callback carries a turn ID from a different
+        // namespace than the prompt hook's prompt ID.
+        let stop = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "thread", turnID: "turn-9", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready, timestamp: startedAt.addingTimeInterval(300)
+        ))
+        try expect(stop.id == start.id && stop.state == .ready && !stop.acknowledged)
+        try expect(abs(stop.duration - 300) < 0.01)
+    }
+
+    private static func testUntrackedCompletionQuiet() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ready = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "automation", turnID: "task-1", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready
+        ))
+        try expect(ready.state == .ready && ready.acknowledged)
+        try expect(try store.activeEvent(source: .codex, sessionID: "automation") == nil)
     }
 
     private static func testSessionReconciliation() throws {
