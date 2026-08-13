@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 — Unreleased
+## 0.2.2 — 2026-08-13
 
 - Notification titles lead with a color dot matching the tmux badge palette,
   so state survives long project names and reads at a glance.
