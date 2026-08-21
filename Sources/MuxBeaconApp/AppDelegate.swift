@@ -99,7 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
         let model = BeaconAppModel.shared
         let settingsMode = ProcessInfo.processInfo.environment["MUX_BEACON_SCREENSHOT_VIEW"] == "settings"
-        let size = settingsMode ? NSSize(width: 540, height: 960) : NSSize(width: 450, height: 620)
+        // Tall enough for the whole settings form; the interactive window sizes
+        // itself independently in openSettingsWindow().
+        let size = settingsMode ? NSSize(width: 540, height: 1140) : NSSize(width: 450, height: 620)
         let rootView = settingsMode
             ? AnyView(BeaconSettingsView().frame(width: size.width, height: size.height))
             : AnyView(BeaconPanel(
