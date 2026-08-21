@@ -14,14 +14,20 @@ A busy tmux setup can hide finished work across sessions and windows. Mux Beacon
 
 ```text
 prompt submitted → working → ready / failed
-                         └→ needs attention (optional)
+                    │    └→ needs attention (optional)
+                    └────── waiting on background work (optional)
 ```
 
+- A turn belongs to the prompt *you* submitted. Machine-injected prompts — task
+  notifications from background subagents, auto-continuation, loop and schedule
+  wake-ups — continue that turn instead of starting a new one, so one turn
+  produces one alert and one duration.
 - `UserPromptSubmit` records the start immediately; its notification is opt-in to avoid noise.
 - Completion and failure notifications contain agent, project, duration, and `session › window`.
 - Clicking **Open in Ghostty** targets the originating tmux client and focuses the captured Ghostty terminal.
 - **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
 - `PermissionRequest` is supported but its notification is off by default.
+- A turn reports its outcome once; a completed turn is never rewritten by a late hook.
 - Prompts, commands, and final answers are not stored unless previews are explicitly enabled.
 
 ## Requirements
@@ -83,11 +89,15 @@ The app and demo require no tmux restart. Hooks may require a new or reloaded ag
 
 Mux Beacon is hook-driven rather than a process scanner. It begins tracking an agent when a hook-enabled prompt is submitted; it cannot reconstruct turns that were already running before installation. Merely launching Claude or Codex does not produce a start event. Completions from sessions Mux Beacon never saw a prompt for — such as Codex automation or background task turns — are recorded quietly under History and do not notify.
 
+Claude Code fires `Stop` in two situations: the turn is over, or the agent has parked itself waiting on background work it registered. Mux Beacon reads the hook's `background_tasks` field to tell them apart. Only a real completion notifies by default; the paused state is a separate, opt-in alert.
+
 ## Notification content
 
 ![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
-macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working), with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working, 🟣 waiting on background work), with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+
+Background-pause alerts are deliberately quieter than the rest: they read *Waiting on background work*, say *still running* instead of a final duration, play no sound, and use a passive interruption level so they never wake the display.
 
 Demo records are marked `DEMO` and intentionally have no live jump target. The GUI keeps sample-data controls out of the normal workflow; remove samples with `mux-beacon clear-demo`.
 
@@ -95,12 +105,13 @@ Demo records are marked `DEMO` and intentionally have no live jump target. The G
 
 ![Mux Beacon notification and privacy settings](docs/assets/mux-beacon-settings.png)
 
-Completion and failure alerts are on. Start and permission alerts are off. Change them in the GUI or from the CLI:
+Completion and failure alerts are on. Start, permission, and background-pause alerts are off. Change them in the GUI or from the CLI:
 
 ```sh
 mux-beacon notifications status
 mux-beacon notifications start on
 mux-beacon notifications start off
+mux-beacon notifications background on
 mux-beacon notifications all off
 ```
 

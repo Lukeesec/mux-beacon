@@ -8,7 +8,8 @@ struct MuxBeaconSelfTest {
             ("Codex UserPromptSubmit fixture", testCodexStart),
             ("Codex turn-complete callback fixture", testCodexCompletion),
             ("Claude background Stop fixture", testClaudeBackground),
-            ("Start and permission notifications default off", testNotificationDefaults),
+            ("Claude prompt origin distinguishes injected turns", testPromptOrigin),
+            ("Start, permission, and background notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
             ("Badge format avoids conditional separator collisions", testBadgeFormat),
             ("Notification glyphs match the badge palette", testNotificationGlyphs),
@@ -18,6 +19,10 @@ struct MuxBeaconSelfTest {
             ("Terminal sessions expose no active turn", testActiveEvent),
             ("Mismatched completion IDs merge into the active turn", testSessionFallbackMerge),
             ("Untracked completions stay quiet in history", testUntrackedCompletionQuiet),
+            ("Injected prompts continue the turn in flight", testInjectedPromptContinuesTurn),
+            ("Injected prompts without a turn stay quiet", testInjectedPromptWithoutTurnQuiet),
+            ("Completed turns ignore late terminal hooks", testCompletedTurnIsImmutable),
+            ("Chained Codex notify is recognized", testCodexNotifyChained),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
             ("CSV escaping", testCSV),
@@ -61,12 +66,176 @@ struct MuxBeaconSelfTest {
         try expect(event.state == .background && event.hasBackgroundWork)
     }
 
+    private static func testPromptOrigin() throws {
+        func origin(_ json: String) throws -> IncomingAgentEvent {
+            try HookNormalizer.parse(source: .claude, data: Data(json.utf8), environment: [:])
+        }
+        let typed = try origin("""
+        {"session_id":"claude_1","prompt_id":"p1","cwd":"/tmp","hook_event_name":"UserPromptSubmit","source":"user","prompt":"Fix it"}
+        """)
+        try expect(typed.promptOrigin == .user && typed.startsTrackedTurn)
+
+        let injected = try origin("""
+        {"session_id":"claude_1","prompt_id":"p2","cwd":"/tmp","hook_event_name":"UserPromptSubmit","source":"system","prompt":"<task-notification>"}
+        """)
+        try expect(injected.promptOrigin == .system && !injected.startsTrackedTurn)
+
+        let wakeup = try origin("""
+        {"session_id":"claude_1","prompt_id":"p3","cwd":"/tmp","hook_event_name":"UserPromptSubmit","source":"loop_wakeup"}
+        """)
+        try expect(wakeup.promptOrigin == .loopWakeup && !wakeup.startsTrackedTurn)
+
+        // Codex and older Claude builds publish no origin, so they must keep
+        // opening turns and keep notifying.
+        let absent = try origin("""
+        {"session_id":"claude_1","prompt_id":"p4","cwd":"/tmp","hook_event_name":"UserPromptSubmit","prompt":"Fix it"}
+        """)
+        try expect(absent.promptOrigin == .unknown && absent.startsTrackedTurn)
+
+        let subagent = try origin("""
+        {"session_id":"claude_1","prompt_id":"p5","cwd":"/tmp","hook_event_name":"UserPromptSubmit","source":"user","agent_id":"agent_9"}
+        """)
+        try expect(subagent.agentID == "agent_9" && !subagent.startsTrackedTurn)
+    }
+
     private static func testNotificationDefaults() throws {
         let suite = "MuxBeaconSelfTest.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = BeaconPreferences(defaults: defaults)
         try expect(!preferences.notifyOnStart && preferences.notifyOnReady && !preferences.notifyOnAttention && preferences.notifyOnFailure)
+        // Pausing for background work is mid-run, not a completion.
+        try expect(!preferences.notifyOnBackground && !preferences.shouldNotify(for: .background))
+        try expect(preferences.shouldNotify(for: .ready) && preferences.shouldNotify(for: .failed))
+        preferences.notifyOnBackground = true
+        try expect(preferences.shouldNotify(for: .background) && preferences.shouldNotify(for: .ready))
+    }
+
+    private static func testInjectedPromptContinuesTurn() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = TmuxTarget(
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Atlas",
+            windowID: "@1", windowIndex: 1, windowName: "agents",
+            paneID: "%1", paneIndex: 0, paneTitle: "agent", panePath: "/tmp"
+        )
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+        let start = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "typed", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working, timestamp: startedAt,
+            promptOrigin: .user, tmux: target
+        ))
+        // A background task reports back mid-run: same tmux pane, new prompt ID.
+        let injected = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "task-note", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working,
+            timestamp: startedAt.addingTimeInterval(60), promptOrigin: .system, tmux: target
+        ))
+        try expect(injected.id == start.id && injected.state == .working)
+        try expect(try store.fetch(id: start.id)?.startedAt == startedAt)
+        // The real turn must not be retired as superseded by its own continuation.
+        try expect(try store.fetch(id: start.id)?.state == .working)
+        try expect(try store.fetchEvents().count == 1)
+
+        let stop = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "task-note", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready,
+            timestamp: startedAt.addingTimeInterval(300), tmux: target
+        ))
+        try expect(stop.id == start.id && stop.state == .ready && !stop.acknowledged)
+        // The ledger measures the whole user turn, not the last fragment of it.
+        try expect(abs(stop.duration - 300) < 0.01)
+        try expect(try store.timeEntries().count == 1)
+
+        // A late hook carrying a folded continuation's prompt ID resolves back to
+        // the turn that absorbed it instead of opening a stray record.
+        let late = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "task-note", hookEventName: "StopFailure",
+            cwd: "/tmp/project", model: nil, state: .failed,
+            timestamp: startedAt.addingTimeInterval(1_600), tmux: target
+        ))
+        try expect(late.id == start.id && late.state == .ready)
+        try expect(try store.fetchEvents().count == 1)
+    }
+
+    private static func testInjectedPromptWithoutTurnQuiet() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // A task notification arriving after the user's turn already finished is
+        // provider chatter, not a turn the user is waiting on.
+        let injected = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "task-note", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working, promptOrigin: .system
+        ))
+        try expect(injected.state == .working && injected.acknowledged)
+        let stop = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "task-note", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready
+        ))
+        try expect(stop.id == injected.id && stop.state == .ready && stop.acknowledged)
+    }
+
+    private static func testCompletedTurnIsImmutable() throws {
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let startedAt = Date(timeIntervalSince1970: 2_000)
+        _ = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "typed", hookEventName: "UserPromptSubmit",
+            cwd: "/tmp/project", model: nil, state: .working, timestamp: startedAt, promptOrigin: .user
+        ))
+        let ready = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "typed", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready, timestamp: startedAt.addingTimeInterval(100)
+        ))
+        try expect(ready.state == .ready)
+        // Claude reuses a finished turn's prompt ID until the next prompt, so a
+        // late rate-limit StopFailure must not rewrite a delivered completion.
+        let late = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "typed", hookEventName: "StopFailure",
+            cwd: "/tmp/project", model: nil, state: .failed, timestamp: startedAt.addingTimeInterval(1_400)
+        ))
+        try expect(late.id == ready.id && late.state == .ready)
+        try expect(try store.fetch(id: ready.id)?.state == .ready)
+        try expect(try store.fetch(id: ready.id)?.completedAt == startedAt.addingTimeInterval(100))
+        try expect(try store.fetchEvents().count == 1)
+
+        // A duplicate completion — Codex sends both a Stop hook and its notify
+        // callback — must stay one record.
+        let duplicate = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "claude", turnID: "typed", hookEventName: "Stop",
+            cwd: "/tmp/project", model: nil, state: .ready, timestamp: startedAt.addingTimeInterval(101)
+        ))
+        try expect(duplicate.completedAt == startedAt.addingTimeInterval(100))
+        try expect(try store.fetchEvents().count == 1)
+    }
+
+    private static func testCodexNotifyChained() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let codexConfig = directory.appendingPathComponent("config.toml")
+        let installer = ConfigInstaller(
+            binaryPath: "/Applications/Mux Beacon.app/Contents/Helpers/mux-beacon",
+            claudeSettings: directory.appendingPathComponent("claude.json"),
+            codexHooks: directory.appendingPathComponent("codex.json"),
+            codexConfig: codexConfig,
+            backupDirectory: directory.appendingPathComponent("backups")
+        )
+        // A wrapper owning the notify slot that re-invokes the previous command
+        // still delivers Codex completions.
+        let chained = """
+        notify = ["/Applications/Wrapper.app/Contents/MacOS/wrapper", "turn-ended", "--previous-notify", "[\\"mux-beacon\\",\\"codex-notify\\"]"]
+        """
+        try Data((chained + "\n").utf8).write(to: codexConfig)
+        try expect(installer.codexNotifyStatus() == .chained)
+        let report = try installer.install(apply: true)
+        try expect(report.warnings.isEmpty)
+        try expect(try String(contentsOf: codexConfig, encoding: .utf8).contains("Wrapper.app"))
+        try expect(installer.codexNotifyStatus() == .chained)
+
+        // A foreign notify that does not forward is still reported as occupied.
+        try Data("notify = [\"/usr/local/bin/other\"]\n".utf8).write(to: codexConfig)
+        try expect(installer.codexNotifyStatus() == .occupied)
     }
 
     private static func testRouteLabel() throws {

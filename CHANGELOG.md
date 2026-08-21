@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.3 — 2026-08-21
+
+- A turn now belongs to the prompt you submitted. Claude Code publishes `source`
+  on `UserPromptSubmit`; machine-injected prompts (`system` task notifications,
+  auto-continuation, `loop_wakeup`, `schedule_wakeup`, `poll_event`) and hooks
+  carrying `agent_id` continue the turn already in flight instead of opening a
+  new one. Background subagents reporting back no longer produce a "Ready"
+  notification while the run is still going.
+- Pausing for background work is no longer reported as a completion. Claude
+  fires `Stop` both when a turn ends and when it parks waiting on registered
+  background work; the paused state is now its own preference, off by default,
+  and its alert reads "Waiting on background work", shows "still running"
+  instead of a final duration, plays no sound, and uses a passive interruption
+  level so it never wakes the display.
+- A completed turn is immutable. Claude reuses a finished turn's `prompt_id`
+  until the next prompt, so a late `StopFailure` — rate limit, overload, server
+  error — was rewriting a delivered "Ready" into a red "Failed" and notifying a
+  second time. Late terminal hooks are now ignored, and a turn announces its
+  outcome once.
+- Turn durations and time-entry exports cover the whole user turn again.
+  Injected continuations no longer retire the real turn as superseded, so one
+  prompt yields one History record instead of a chain of fragments.
+- `mux-beacon notifications background on|off` controls the new alert, and
+  `doctor` recognizes a Codex `notify` slot owned by another command that
+  forwards to Mux Beacon, reporting it as installed rather than missing.
+
 ## 0.2.2 — 2026-08-13
 
 - Notification titles lead with a color dot matching the tmux badge palette,

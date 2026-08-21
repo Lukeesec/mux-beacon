@@ -4,7 +4,10 @@
 
 - Hook activity and notification clicks must never open or focus the Mux Beacon inbox. Only an explicit GUI action (`mux-beacon gui`, the menu-bar command, or `muxbeacon://inbox`) may do that.
 - User-facing routes emphasize `session › window`. Pane and client identifiers are private routing metadata.
-- Start and permission notifications are off by default. Completion and failure notifications are on by default.
+- Start, permission, and background-pause notifications are off by default. Completion and failure notifications are on by default.
+- A turn belongs to the prompt the user submitted. Claude publishes `source` on `UserPromptSubmit`; only `user` and `sdk` open a tracked turn. `system`, `loop_wakeup`, `schedule_wakeup`, and `poll_event` continue the turn already in flight, and a hook carrying `agent_id` fired inside a subagent. An absent or unrecognized origin fails open so Codex and older Claude builds keep notifying.
+- Claude fires `Stop` both when a turn ends and when it parks waiting on background work. `background_tasks` separates them; the paused state is its own opt-in alert, delivered silently at a passive interruption level.
+- A turn reports its outcome once. Once an event has a completion time, later terminal hooks are ignored — Claude reuses a finished turn's `prompt_id` until the next prompt, so a late `StopFailure` must never rewrite a delivered result.
 - Do not store prompts, commands, or final-answer previews unless the user explicitly enables previews.
 - Preserve user configuration. Hook installation is additive, creates backups, and must not replace an existing Codex `notify` command.
 
@@ -13,6 +16,7 @@
 - Claude completion arrives through its `Stop` lifecycle hook.
 - Codex `UserPromptSubmit` arrives through `~/.codex/hooks.json`, but do not assume Codex emits `Stop` after every turn. Reliable Codex completion uses the documented top-level `notify` callback in `~/.codex/config.toml`, whose `agent-turn-complete` JSON is handled by `mux-beacon codex-notify`.
 - Codex completion turn IDs do not match `UserPromptSubmit` prompt IDs, and Codex fires completions for every internal task, including automation sessions with no user prompt. Completions with unmatched IDs merge into the session's newest active turn; completions for untracked sessions must stay quiet (recorded pre-acknowledged, never notified).
+- A third-party wrapper may own Codex's `notify` slot and re-invoke the previous command through its own arguments. That still delivers completions: report it as installed-and-forwarded, and leave the slot alone.
 - Codex blocking `Stop` hooks require valid JSON on stdout; emit `{}` and no model-visible text.
 - `SessionEnd` must not create a second stale record after a completed turn.
 - Hook adapters must fail open: log local errors without interrupting Claude or Codex.

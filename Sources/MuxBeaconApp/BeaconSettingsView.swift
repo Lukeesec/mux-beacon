@@ -9,6 +9,7 @@ struct BeaconSettingsView: View {
     @AppStorage("notifyOnStart", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnStart = false
     @AppStorage("notifyOnReady", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnReady = true
     @AppStorage("notifyOnAttention", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnAttention = false
+    @AppStorage("notifyOnBackground", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnBackground = false
     @AppStorage("notifyOnFailure", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnFailure = true
     @AppStorage("notificationSound", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notificationSound = true
     @AppStorage("storePreviews", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var storePreviews = false
@@ -22,8 +23,12 @@ struct BeaconSettingsView: View {
                 Toggle("Turn completed", isOn: $notifyOnReady)
                 Toggle("Permission requested", isOn: $notifyOnAttention)
                 Toggle("Turn failed", isOn: $notifyOnFailure)
+                Toggle("Paused for background work", isOn: $notifyOnBackground)
                 Toggle("Play sound", isOn: $notificationSound)
-                Text("Start and permission alerts are off by default. Permission alerts also require mux-beacon install --apply --with-permission-events.")
+                Text("Start, permission, and background-pause alerts are off by default. Permission alerts also require mux-beacon install --apply --with-permission-events.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("A background pause means the agent is still working, not finished. Those alerts arrive silently and never wake the display.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("For notifications that remain until dismissed, choose Alerts—not Banners—in macOS Notification Settings.")

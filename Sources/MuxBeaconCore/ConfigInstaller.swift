@@ -21,6 +21,9 @@ public struct InstallationReport: Sendable {
 
 public enum CodexNotifyStatus: Sendable {
     case installed
+    /// Another tool owns the `notify` slot but forwards to Mux Beacon, so
+    /// completions still arrive.
+    case chained
     case available
     case occupied
     case needsRepair
@@ -128,7 +131,8 @@ public final class ConfigInstaller {
         guard let text = try? String(contentsOf: codexConfig, encoding: .utf8) else { return .available }
         if text.hasPrefix(managedNotifyPrefix()) { return .installed }
         if hasManagedNotifySetting(text) { return .needsRepair }
-        return hasNotifySetting(text) ? .occupied : .available
+        guard hasNotifySetting(text) else { return .available }
+        return notifyForwardsToBeacon(text) ? .chained : .occupied
     }
 
     private static let notifyMarker = "# mux-beacon-managed"
@@ -139,10 +143,9 @@ public final class ConfigInstaller {
         let change = InstallationChange(path: codexConfig.path, eventsAdded: [], wasCreated: !existed)
         let prefix = managedNotifyPrefix()
         if text.hasPrefix(prefix) { return (change, nil, nil) }
-        if hasNotifySetting(text) {
-            if !hasManagedNotifySetting(text) {
-                return (change, nil, "Codex notify is already configured; preserved it, so Codex completion fallback was not installed.")
-            }
+        if hasNotifySetting(text), !hasManagedNotifySetting(text) {
+            if notifyForwardsToBeacon(text) { return (change, nil, nil) }
+            return (change, nil, "Codex notify is already configured; preserved it, so Codex completion fallback was not installed.")
         }
 
         var changed = change
@@ -182,6 +185,16 @@ public final class ConfigInstaller {
 
     private func hasNotifySetting(_ text: String) -> Bool {
         text.range(of: #"(?m)^[\t ]*notify[\t ]*="# , options: .regularExpression) != nil
+    }
+
+    /// Wrappers that take the `notify` slot commonly re-invoke the previous
+    /// command, embedding it in their own arguments. That still delivers Codex
+    /// completions, so it must not be reported as a missing integration.
+    private func notifyForwardsToBeacon(_ text: String) -> Bool {
+        text.split(whereSeparator: { $0.isNewline }).contains {
+            $0.range(of: #"^[\t ]*notify[\t ]*="#, options: .regularExpression) != nil
+                && ($0.contains("codex-notify") || $0.contains(binaryPath))
+        }
     }
 
     private func hasManagedNotifySetting(_ text: String) -> Bool {

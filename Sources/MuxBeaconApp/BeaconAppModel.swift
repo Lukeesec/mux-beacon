@@ -119,23 +119,27 @@ final class BeaconAppModel: ObservableObject {
     }
 
     private func deliverNotificationIfNeeded(_ event: AgentEvent) {
-        let key = "\(event.id):\(event.state.rawValue)"
-        guard !event.isDemo, !event.acknowledged, preferences.shouldNotify(for: event.state), notificationTracker.begin(key) else { return }
+        let ticket = NotificationTicket(eventID: event.id, state: event.state)
+        guard !event.isDemo, !event.acknowledged, preferences.shouldNotify(for: event.state), notificationTracker.begin(ticket) else { return }
 
         let content = UNMutableNotificationContent()
         let stateLabel: String
         switch event.state {
         case .working: stateLabel = "Started"
         case .needsAttention: stateLabel = "Needs attention"
-        case .background: stateLabel = "Background work"
+        // Not a completion: the agent parked itself waiting on a background task
+        // and will keep going on its own.
+        case .background: stateLabel = "Waiting on background work"
         case .ready: stateLabel = "Ready"
         case .failed: stateLabel = "Failed"
         case .stale: return
         }
         content.title = "\(event.state.notificationGlyph) \(event.projectName) — \(stateLabel)"
-        content.subtitle = event.state == .working
-            ? event.source.displayName
-            : "\(event.source.displayName) · \(event.durationLabel)"
+        switch event.state {
+        case .working: content.subtitle = event.source.displayName
+        case .background: content.subtitle = "\(event.source.displayName) · still running · \(event.durationLabel)"
+        default: content.subtitle = "\(event.source.displayName) · \(event.durationLabel)"
+        }
         content.body = preferences.storePreviews
             ? [event.routeLabel, event.preview].compactMap { $0 }.joined(separator: "\n")
             : event.routeLabel
@@ -143,40 +147,61 @@ final class BeaconAppModel: ObservableObject {
         content.threadIdentifier = "\(event.source.rawValue):\(event.sessionID)"
         content.targetContentIdentifier = event.id
         content.userInfo = ["eventID": event.id]
-        if preferences.notificationSound { content.sound = .default }
+        if event.state == .background {
+            // A progress note, not a summons: silent, and it never wakes the display.
+            content.interruptionLevel = .passive
+        } else if preferences.notificationSound {
+            content.sound = .default
+        }
 
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { [notificationTracker] settings in
             guard [.authorized, .provisional].contains(settings.authorizationStatus) else {
-                notificationTracker.finish(key, delivered: false)
+                notificationTracker.finish(ticket, delivered: false)
                 return
             }
             center.add(UNNotificationRequest(identifier: event.id, content: content, trigger: nil)) { error in
                 if let error {
                     BeaconLog.write("notification delivery: \(error.localizedDescription)")
                 } else {
-                    BeaconLog.write("notification queued: \(event.id)")
+                    BeaconLog.write("notification queued: \(event.id) [\(event.state.rawValue)]")
                 }
-                notificationTracker.finish(key, delivered: error == nil)
+                notificationTracker.finish(ticket, delivered: error == nil)
             }
         }
     }
 }
 
+private struct NotificationTicket: Sendable {
+    var eventID: String
+    var state: AgentState
+
+    var key: String { "\(eventID):\(state.rawValue)" }
+    var isTerminal: Bool { state.isTerminal }
+}
+
 private final class NotificationTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var keys = Set<String>()
+    private var settled = Set<String>()
 
-    func begin(_ key: String) -> Bool {
+    func begin(_ ticket: NotificationTicket) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return keys.insert(key).inserted
+        // A turn announces its outcome once. Without this, a turn already
+        // reported as Ready could be reported again under a different terminal
+        // state.
+        if ticket.isTerminal, settled.contains(ticket.eventID) { return false }
+        guard keys.insert(ticket.key).inserted else { return false }
+        if ticket.isTerminal { settled.insert(ticket.eventID) }
+        return true
     }
 
-    func finish(_ key: String, delivered: Bool) {
+    func finish(_ ticket: NotificationTicket, delivered: Bool) {
         guard !delivered else { return }
         lock.lock()
-        keys.remove(key)
+        keys.remove(ticket.key)
+        if ticket.isTerminal { settled.remove(ticket.eventID) }
         lock.unlock()
     }
 }

@@ -8,6 +8,7 @@ public final class BeaconPreferences: @unchecked Sendable {
         static let notifyOnStart = "notifyOnStart"
         static let notifyOnReady = "notifyOnReady"
         static let notifyOnAttention = "notifyOnAttention"
+        static let notifyOnBackground = "notifyOnBackground"
         static let notifyOnFailure = "notifyOnFailure"
         static let notificationSound = "notificationSound"
         static let storePreviews = "storePreviews"
@@ -21,6 +22,7 @@ public final class BeaconPreferences: @unchecked Sendable {
             Key.notifyOnStart: false,
             Key.notifyOnReady: true,
             Key.notifyOnAttention: false,
+            Key.notifyOnBackground: false,
             Key.notifyOnFailure: true,
             Key.notificationSound: true,
             Key.storePreviews: false,
@@ -42,6 +44,14 @@ public final class BeaconPreferences: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Key.notifyOnAttention) }
     }
 
+    /// Claude fires `Stop` when it parks itself waiting on background work, not
+    /// only when a turn is over. That is mid-run, so it is off by default and
+    /// deliberately kept separate from completion alerts.
+    public var notifyOnBackground: Bool {
+        get { defaults.bool(forKey: Key.notifyOnBackground) }
+        set { defaults.set(newValue, forKey: Key.notifyOnBackground) }
+    }
+
     public var notifyOnFailure: Bool {
         get { defaults.bool(forKey: Key.notifyOnFailure) }
         set { defaults.set(newValue, forKey: Key.notifyOnFailure) }
@@ -60,7 +70,8 @@ public final class BeaconPreferences: @unchecked Sendable {
     public func shouldNotify(for state: AgentState) -> Bool {
         switch state {
         case .working: notifyOnStart
-        case .ready, .background: notifyOnReady
+        case .ready: notifyOnReady
+        case .background: notifyOnBackground
         case .needsAttention: notifyOnAttention
         case .failed: notifyOnFailure
         case .stale: false

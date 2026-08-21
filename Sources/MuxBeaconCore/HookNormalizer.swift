@@ -32,6 +32,12 @@ public enum HookNormalizer {
 
         let cwd = object.string("cwd") ?? FileManager.default.currentDirectoryPath
         let turnID = object.string("turn_id") ?? object.string("prompt_id")
+        // Claude Code publishes who injected the prompt. Task notifications,
+        // auto-continuation, and loop or schedule wake-ups all arrive as real
+        // UserPromptSubmit hooks; only `user` and `sdk` mean a person is waiting.
+        let promptOrigin = PromptOrigin(hookValue: object.string("source"))
+        // Present only when the hook fired inside a subagent.
+        let agentID = object.string("agent_id")
         let backgroundTasks = object.array("background_tasks")?.isEmpty == false
         let sessionCrons = object.array("session_crons")?.isEmpty == false
         let hasBackground = backgroundTasks || sessionCrons
@@ -70,6 +76,8 @@ public enum HookNormalizer {
             timestamp: now,
             preview: preview?.firstLine(limit: 180),
             hasBackgroundWork: hasBackground,
+            promptOrigin: promptOrigin,
+            agentID: agentID,
             tmux: TmuxInspector.capture(environment: environment),
             ghostty: shouldCaptureOrigin ? GhosttyInspector.captureFocusedTerminal(environment: environment) : nil
         )

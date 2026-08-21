@@ -3,7 +3,7 @@ import Foundation
 /// Single source of truth for the CLI-reported version.
 /// Keep Packaging/Info.plist's CFBundleShortVersionString and CHANGELOG.md in sync.
 public enum BeaconVersion {
-    public static let current = "0.2.2"
+    public static let current = "0.2.3"
 }
 
 public enum AgentSource: String, Codable, CaseIterable, Sendable {
@@ -11,6 +11,39 @@ public enum AgentSource: String, Codable, CaseIterable, Sendable {
     case codex
 
     public var displayName: String { rawValue.capitalized }
+}
+
+/// Who authored the prompt that opened a turn.
+///
+/// Claude Code publishes this as `source` on `UserPromptSubmit`. Only a person
+/// — or a non-interactive entrypoint standing in for one — starts a turn worth
+/// announcing; the machine-injected values continue a turn already in flight.
+public enum PromptOrigin: String, Codable, CaseIterable, Sendable {
+    case user
+    case sdk
+    case system
+    case loopWakeup = "loop_wakeup"
+    case scheduleWakeup = "schedule_wakeup"
+    case pollEvent = "poll_event"
+    /// The hook published no origin, or one this build does not recognize.
+    case unknown
+
+    /// Agents that publish no origin at all (Codex, older Claude builds) must
+    /// keep notifying, so an absent or unfamiliar value fails open.
+    public init(hookValue: String?) {
+        guard let hookValue, let origin = PromptOrigin(rawValue: hookValue) else {
+            self = .unknown
+            return
+        }
+        self = origin
+    }
+
+    public var startsUserTurn: Bool {
+        switch self {
+        case .user, .sdk, .unknown: true
+        case .system, .loopWakeup, .scheduleWakeup, .pollEvent: false
+        }
+    }
 }
 
 public enum AgentState: String, Codable, CaseIterable, Sendable {
@@ -163,9 +196,25 @@ public struct AgentEvent: Codable, Identifiable, Equatable, Sendable {
     public var acknowledged: Bool
     public var logged: Bool
     public var isDemo: Bool
+    /// Prompt IDs of machine-injected continuations folded into this turn. A
+    /// hook can arrive carrying one of them after the turn has closed, and it
+    /// has to resolve back here rather than open a record of its own.
+    /// Optional so records written by older builds still decode.
+    public var continuationTurnIDs: [String]?
     public var tmux: TmuxTarget?
     public var ghostty: GhosttyTarget?
     public var preview: String?
+
+    /// Keeps the payload bounded on long turns; a late hook carries a recent ID.
+    public static let continuationTurnIDLimit = 32
+
+    public mutating func absorbContinuation(turnID: String?) {
+        guard let turnID, turnID != self.turnID else { return }
+        var identifiers = continuationTurnIDs ?? []
+        identifiers.removeAll { $0 == turnID }
+        identifiers.append(turnID)
+        continuationTurnIDs = identifiers.suffix(Self.continuationTurnIDLimit).map { $0 }
+    }
 
     public init(
         id: String,
@@ -184,6 +233,7 @@ public struct AgentEvent: Codable, Identifiable, Equatable, Sendable {
         acknowledged: Bool = false,
         logged: Bool = false,
         isDemo: Bool = false,
+        continuationTurnIDs: [String]? = nil,
         tmux: TmuxTarget? = nil,
         ghostty: GhosttyTarget? = nil,
         preview: String? = nil
@@ -204,6 +254,7 @@ public struct AgentEvent: Codable, Identifiable, Equatable, Sendable {
         self.acknowledged = acknowledged
         self.logged = logged
         self.isDemo = isDemo
+        self.continuationTurnIDs = continuationTurnIDs
         self.tmux = tmux
         self.ghostty = ghostty
         self.preview = preview
@@ -234,9 +285,16 @@ public struct IncomingAgentEvent: Sendable {
     public var timestamp: Date
     public var preview: String?
     public var hasBackgroundWork: Bool
+    public var promptOrigin: PromptOrigin
+    public var agentID: String?
     public var isDemo: Bool
     public var tmux: TmuxTarget?
     public var ghostty: GhosttyTarget?
+
+    /// True when this event may open a new tracked turn. Machine-injected
+    /// prompts and hooks fired from inside a subagent continue the turn that is
+    /// already in flight instead.
+    public var startsTrackedTurn: Bool { promptOrigin.startsUserTurn && agentID == nil }
 
     public init(
         source: AgentSource,
@@ -249,6 +307,8 @@ public struct IncomingAgentEvent: Sendable {
         timestamp: Date = Date(),
         preview: String? = nil,
         hasBackgroundWork: Bool = false,
+        promptOrigin: PromptOrigin = .unknown,
+        agentID: String? = nil,
         isDemo: Bool = false,
         tmux: TmuxTarget? = nil,
         ghostty: GhosttyTarget? = nil
@@ -263,6 +323,8 @@ public struct IncomingAgentEvent: Sendable {
         self.timestamp = timestamp
         self.preview = preview
         self.hasBackgroundWork = hasBackgroundWork
+        self.promptOrigin = promptOrigin
+        self.agentID = agentID
         self.isDemo = isDemo
         self.tmux = tmux
         self.ghostty = ghostty

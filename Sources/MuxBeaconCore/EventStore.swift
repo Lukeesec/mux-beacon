@@ -37,15 +37,32 @@ public final class EventStore: @unchecked Sendable {
             sessionID: incoming.sessionID,
             turnID: incoming.turnID
         )
+        // A hook carrying the prompt ID of a folded continuation belongs to the
+        // turn that absorbed it, open or closed.
+        if current == nil, let turnID = incoming.turnID {
+            current = try findByContinuation(source: incoming.source, sessionID: incoming.sessionID, turnID: turnID)
+        }
         // Codex's completion callback uses a different ID namespace than its
         // prompt hook, so an unmatched turn ID still belongs to the session's
         // newest active turn.
         if current == nil, incoming.turnID != nil, incoming.hookEventName != "UserPromptSubmit" {
             current = try findCurrent(source: incoming.source, sessionID: incoming.sessionID, turnID: nil)
         }
+
+        // A turn that already reported a completion is closed. Claude keeps
+        // reusing a finished turn's prompt ID until the next prompt arrives, so
+        // a late StopFailure — rate limit, overload, server error — would
+        // otherwise rewrite a delivered "Ready" into a red "Failed" and notify
+        // again for work that had already succeeded.
+        if let settled = current, settled.state.isTerminal, settled.completedAt != nil {
+            return settled
+        }
+
+        let isPrompt = incoming.hookEventName == "UserPromptSubmit"
+        let opensTurn = isPrompt && incoming.startsTrackedTurn
         let event: AgentEvent
 
-        if incoming.hookEventName == "UserPromptSubmit" {
+        if opensTurn {
             let identity = incoming.turnID ?? "\(incoming.timestamp.timeIntervalSince1970)-\(UUID().uuidString)"
             event = AgentEvent(
                 id: "\(incoming.source.rawValue):\(incoming.sessionID):\(identity)",
@@ -64,6 +81,21 @@ public final class EventStore: @unchecked Sendable {
                 ghostty: incoming.ghostty,
                 preview: storePreview ? incoming.preview : nil
             )
+        } else if isPrompt,
+                  var running = try findCurrent(source: incoming.source, sessionID: incoming.sessionID, turnID: nil) {
+            // A machine-injected prompt — task notification, auto-continuation,
+            // loop or schedule wake-up — is not a new turn. Fold it into the one
+            // already in flight so the turn keeps its start time, keeps its
+            // unread state, and is never retired as superseded by its own
+            // continuation.
+            running.state = .working
+            running.hookEventName = incoming.hookEventName
+            running.updatedAt = incoming.timestamp
+            running.model = incoming.model ?? running.model
+            running.tmux = running.tmux ?? incoming.tmux
+            running.ghostty = running.ghostty ?? incoming.ghostty
+            running.absorbContinuation(turnID: incoming.turnID)
+            event = running
         } else if var existing = current {
             existing.state = incoming.state
             existing.hookEventName = incoming.hookEventName
@@ -92,9 +124,11 @@ public final class EventStore: @unchecked Sendable {
                 completedAt: incoming.state.isTerminal ? incoming.timestamp : nil,
                 // A terminal event for a session with no tracked prompt is
                 // provider chatter (for example Codex automation tasks), not a
-                // turn the user is waiting on. Keep it in History without
-                // notifying or counting as unread.
-                acknowledged: incoming.state.isTerminal,
+                // turn the user is waiting on. A turn opened by a machine-
+                // injected prompt after the user's turn already finished is the
+                // same thing. Keep both in History without notifying or counting
+                // as unread.
+                acknowledged: incoming.state.isTerminal || !incoming.startsTrackedTurn,
                 isDemo: incoming.isDemo,
                 tmux: incoming.tmux,
                 ghostty: incoming.ghostty,
@@ -103,7 +137,7 @@ public final class EventStore: @unchecked Sendable {
         }
 
         try upsert(event)
-        if incoming.hookEventName == "UserPromptSubmit" {
+        if opensTurn {
             _ = try reconcileSupersededEvents(at: incoming.timestamp)
         }
         try pruneExpiredHistory(now: incoming.timestamp)
@@ -261,6 +295,27 @@ public final class EventStore: @unchecked Sendable {
         try fetchEvents(limit: 10_000)
             .filter { $0.completedAt != nil && (includeLogged || !$0.logged) }
             .map(TimeEntryDraft.init(event:))
+    }
+
+    /// Turns own the prompt IDs of the continuations folded into them, but those
+    /// IDs never reach the indexed `turn_id` column, so this scans the session's
+    /// recent records instead.
+    private func findByContinuation(source: AgentSource, sessionID: String, turnID: String) throws -> AgentEvent? {
+        try withDatabase { db in
+            let sql = "SELECT payload FROM events WHERE source = ? AND session_id = ? ORDER BY updated_at DESC LIMIT 50"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+                throw EventStoreError.statement(errorMessage(db))
+            }
+            defer { sqlite3_finalize(statement) }
+            bind(source.rawValue, to: 1, statement: statement)
+            bind(sessionID, to: 2, statement: statement)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let event = decodeColumn(statement, index: 0) else { continue }
+                if event.continuationTurnIDs?.contains(turnID) == true { return event }
+            }
+            return nil
+        }
     }
 
     private func findCurrent(source: AgentSource, sessionID: String, turnID: String?) throws -> AgentEvent? {

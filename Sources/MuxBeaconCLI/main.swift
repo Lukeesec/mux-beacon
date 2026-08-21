@@ -135,6 +135,7 @@ struct MuxBeaconCLI {
         let notifyStatus: String
         switch installer.codexNotifyStatus() {
         case .installed: notifyStatus = "installed"
+        case .chained: notifyStatus = "installed (forwarded by another command)"
         case .available: notifyStatus = "not installed"
         case .occupied: notifyStatus = "another command is configured"
         case .needsRepair: notifyStatus = "needs reinstall"
@@ -302,23 +303,26 @@ struct MuxBeaconCLI {
             print("  completion: \(preferences.notifyOnReady ? "on" : "off")")
             print("  permission: \(preferences.notifyOnAttention ? "on" : "off")")
             print("  failure:    \(preferences.notifyOnFailure ? "on" : "off")")
+            print("  background: \(preferences.notifyOnBackground ? "on" : "off")")
             print("  sound:      \(preferences.notificationSound ? "on" : "off")")
             return
         }
         guard arguments.count > 1, let enabled = parseToggle(arguments[1]) else {
-            throw CLIError.usage("notifications expects <start|completion|permission|failure|sound|all> <on|off>")
+            throw CLIError.usage("notifications expects <start|completion|permission|failure|background|sound|all> <on|off>")
         }
         switch target {
         case "start": preferences.notifyOnStart = enabled
         case "completion", "ready": preferences.notifyOnReady = enabled
         case "permission", "attention": preferences.notifyOnAttention = enabled
         case "failure", "failed": preferences.notifyOnFailure = enabled
+        case "background", "paused": preferences.notifyOnBackground = enabled
         case "sound": preferences.notificationSound = enabled
         case "all":
             preferences.notifyOnStart = enabled
             preferences.notifyOnReady = enabled
             preferences.notifyOnAttention = enabled
             preferences.notifyOnFailure = enabled
+            preferences.notifyOnBackground = enabled
         default:
             throw CLIError.usage("unknown notification target: \(target)")
         }
@@ -372,15 +376,16 @@ struct MuxBeaconCLI {
           mux-beacon gui                     Open the native inbox window
           mux-beacon notifications status    Show notification preferences
           mux-beacon notifications <type> on|off
-                                              Change start/completion/permission/failure/all
+                                              Change start/completion/permission/failure/background/all
           mux-beacon test <state>            Send start/ready/attention/failed test event
           mux-beacon demo                    Seed anonymized UI demo data
           mux-beacon jump-last               Open the newest unread agent
           mux-beacon export --format json|csv [--output PATH]
           mux-beacon tmux popup|enable-badges|disable-badges|badge-status
 
-        Completion and failure notifications are enabled by default. Start and
-        PermissionRequest notifications are off by default.
+        Completion and failure notifications are enabled by default. Start,
+        PermissionRequest, and background-pause notifications are off by default.
+        A background pause means the agent is still working, not finished.
         """)
     }
 }
