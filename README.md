@@ -27,7 +27,7 @@ prompt submitted → working → ready / failed
   tmux pane from the turn that spawned it.
 - `UserPromptSubmit` records the start immediately; its notification is opt-in to avoid noise.
 - Completion and failure notifications contain agent, project, duration, and `session › window`.
-- Clicking **Open in Ghostty** targets the originating tmux client and focuses the captured Ghostty terminal.
+- Clicking **Open in Ghostty** returns you to the pane whatever app has focus and wherever you are in tmux: it picks a live tmux client, verifies the pane is actually on screen afterwards, and holds the terminal in front.
 - **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
 - `PermissionRequest` is supported but its notification is off by default.
 - A turn reports its outcome once; a completed turn is never rewritten by a late hook.

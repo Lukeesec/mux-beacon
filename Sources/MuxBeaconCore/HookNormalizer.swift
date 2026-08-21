@@ -66,6 +66,7 @@ public enum HookNormalizer {
         }
 
         let shouldCaptureOrigin = hookName == "UserPromptSubmit"
+        let tmux = TmuxInspector.capture(environment: environment)
         return IncomingAgentEvent(
             source: source,
             sessionID: sessionID,
@@ -80,8 +81,10 @@ public enum HookNormalizer {
             promptOrigin: promptOrigin,
             agentID: agentID,
             spawnedByAgent: spawnedByAgent,
-            tmux: TmuxInspector.capture(environment: environment),
-            ghostty: shouldCaptureOrigin ? GhosttyInspector.captureFocusedTerminal(environment: environment) : nil
+            tmux: tmux,
+            ghostty: shouldCaptureOrigin
+                ? GhosttyInspector.captureFocusedTerminal(environment: environment, tmux: tmux)
+                : nil
         )
     }
 

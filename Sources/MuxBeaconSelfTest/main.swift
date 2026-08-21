@@ -25,6 +25,8 @@ struct MuxBeaconSelfTest {
             ("Completed turns ignore late terminal hooks", testCompletedTurnIsImmutable),
             ("Chained Codex notify is recognized", testCodexNotifyChained),
             ("Watched-session suppression fails open", testWatchedSessionFailsOpen),
+            ("Terminal ownership follows the client process chain", testTerminalOwnership),
+            ("Routing errors all explain themselves", testRoutingErrors),
             ("Agent-spawned runs stay quiet and keep the parent turn", testNestedAgentRun),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
@@ -280,6 +282,41 @@ struct MuxBeaconSelfTest {
         // The turn the user is actually waiting on is still live and still unread.
         try expect(try store.fetch(id: parent.id)?.state == .working)
         try expect(try store.activeEvent(source: .claude, sessionID: "outer") != nil)
+    }
+
+    private static func testTerminalOwnership() throws {
+        // tmux(client) → zsh → login → Ghostty, the real shape on macOS.
+        let client: Int32 = 40, shell: Int32 = 39, login: Int32 = 38
+        let ghostty: Int32 = 37, other: Int32 = 20, launchd: Int32 = 1
+        let tree = ProcessTree(
+            parents: [client: shell, shell: login, login: ghostty, ghostty: launchd, other: launchd],
+            commands: [
+                client: "tmux", shell: "-/bin/zsh", login: "/usr/bin/login",
+                ghostty: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+                other: "/System/Applications/Mail.app/Contents/MacOS/Mail",
+            ]
+        )
+        try expect(TerminalOwnership.anyProcess([client], belongsTo: ghostty, tree: tree))
+        try expect(!TerminalOwnership.anyProcess([client], belongsTo: other, tree: tree))
+        // Nothing to vouch for it, or no readable tree: answer no and let the
+        // caller fall back rather than guess.
+        try expect(!TerminalOwnership.anyProcess([], belongsTo: ghostty, tree: tree))
+        try expect(!TerminalOwnership.anyProcess([client], belongsTo: ghostty, tree: nil))
+    }
+
+    private static func testRoutingErrors() throws {
+        // A jump that cannot proceed has to say why; a silent failure is the
+        // one outcome that cannot be diagnosed after the fact.
+        let errors: [RoutingError] = [
+            .demo, .notInTmux, .ambiguousClient, .stalePane, .switchNotVisible,
+            .tmux("detail"), .ghostty("detail"),
+        ]
+        var seen = Set<String>()
+        for error in errors {
+            let description = error.errorDescription ?? ""
+            try expect(!description.isEmpty)
+            try expect(seen.insert(description).inserted)
+        }
     }
 
     private static func testWatchedSessionFailsOpen() throws {

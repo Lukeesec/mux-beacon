@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.4 — 2026-08-21
+
+- Clicking a notification now returns you to the pane whatever the computer is
+  doing: whichever app holds focus, and whichever tmux session, window, or pane
+  you happen to be sitting in.
+- Ghostty targeting worked for no one. Capture required `TERM_PROGRAM` to read
+  `ghostty`, but tmux overwrites `TERM_PROGRAM` with its own name inside every
+  pane, so no event ever stored a Ghostty target and every jump silently fell
+  back to activating the app. The terminal is now identified by walking the tmux
+  client's process chain, which reports the truth from inside tmux and works for
+  any emulator.
+- Jumps no longer trust a stored client. tmux client names are tty paths and
+  several clients can share one, including suspended clients that report as
+  attached while displaying nothing — and `switch-client` returns success for
+  those, which is how a click could mark a turn read while showing you nothing.
+  The jump now picks a live client, and then verifies an attached client really
+  is showing the pane before reporting success.
+- The terminal is asserted to the front until it holds it, so the system's own
+  activation of Mux Beacon on a notification click cannot leave you looking at
+  the app you came from.
+- Every notification click is logged with its outcome — jumped, dismissed,
+  acknowledged, event not found, or failed — so a click that does nothing leaves
+  a trace.
+
 ## 0.2.3 — 2026-08-21
 
 - A turn now belongs to the prompt you submitted. Claude Code publishes `source`

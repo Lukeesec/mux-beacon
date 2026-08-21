@@ -236,18 +236,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        guard let eventID = response.notification.request.content.userInfo["eventID"] as? String else { return }
+        guard let eventID = response.notification.request.content.userInfo["eventID"] as? String else {
+            BeaconLog.write("notification click: no event ID on the notification")
+            return
+        }
         let store = EventStore()
         do {
             switch response.actionIdentifier {
             case UNNotificationDefaultActionIdentifier, "OPEN":
-                if let event = try store.fetch(id: eventID) {
-                    try TargetRouter.jump(to: event)
-                    try store.acknowledge(id: eventID)
+                // Logged either way: a click that quietly does nothing is the
+                // hardest kind of failure to diagnose after the fact.
+                guard let event = try store.fetch(id: eventID) else {
+                    BeaconLog.write("notification click: no stored event for \(eventID)")
+                    return
                 }
+                try TargetRouter.jump(to: event)
+                try store.acknowledge(id: eventID)
+                BeaconLog.write("notification click: jumped to \(event.routeLabel) for \(eventID)")
             case "ACKNOWLEDGE":
                 try store.acknowledge(id: eventID)
+                BeaconLog.write("notification click: acknowledged \(eventID)")
+            case UNNotificationDismissActionIdentifier:
+                BeaconLog.write("notification click: dismissed \(eventID)")
+                return
             default:
+                BeaconLog.write("notification click: unhandled action \(response.actionIdentifier) for \(eventID)")
                 return
             }
             if let updated = try store.fetch(id: eventID) { TmuxStateWriter.update(updated) }

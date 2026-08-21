@@ -25,7 +25,9 @@
 
 ## tmux and Ghostty
 
-- Keep tmux navigation client-aware and fail closed when the originating client or pane cannot be proven.
+- Keep tmux navigation client-aware and fail closed when the originating client or pane cannot be proven. Resolve the client live at jump time: tmux client names are tty paths, several clients can share one, and a suspended client reports as attached while displaying nothing. `switch-client` returns success for such a client, so always verify afterwards that an attached client is actually showing the pane.
+- Never identify the terminal emulator from `TERM_PROGRAM`. tmux overwrites it with its own name inside every pane, so the check silently fails for every session. Walk the tmux client's process chain instead; it works from inside tmux and for any emulator.
+- A notification click must land the user on the pane regardless of which app holds focus. macOS activates Mux Beacon on the click and it owns no window, so the terminal has to be asserted to the front until it holds it.
 - Pane badges are opt-in per tmux server and must restore the exact prior border settings.
 - Commas inside tmux conditional branches are separators. Use separate style tokens such as `#[fg=blue]#[bold]`, not `#[fg=blue,bold]`, in nested badge conditionals.
 - Ghostty focus and tmux switching must not activate the Mux Beacon GUI as an intermediate step.

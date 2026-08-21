@@ -133,21 +133,49 @@ public enum TmuxInspector {
     }
 
     private static func captureClient(executable: String, socket: String, paneID: String) -> (tty: String, pid: Int)? {
-        let format = ["#{client_tty}", "#{client_pid}", "#{client_activity}", "#{pane_id}"]
-            .joined(separator: separator)
-        guard
-            let result = try? ProcessRunner.run(executable, ["-S", socket, "list-clients", "-F", format]),
-            result.status == 0
-        else { return nil }
+        liveClients(executable: executable, socket: socket)
+            .filter { $0.paneID == paneID }
+            .max(by: { $0.activity < $1.activity })
+            .map { ($0.tty, $0.pid) }
+    }
 
-        let candidates: [(tty: String, pid: Int, activity: Int)] = result.stdout
+    public struct LiveClient: Equatable, Sendable {
+        public var tty: String
+        public var pid: Int
+        public var activity: Int
+        public var sessionName: String
+        public var paneID: String
+    }
+
+    /// Clients that are actually displaying something. A suspended client still
+    /// reports as attached and keeps its last activity timestamp, so it can win
+    /// a most-recently-active comparison while showing the user nothing.
+    public static func liveClients(executable: String, socket: String) -> [LiveClient] {
+        let format = [
+            "#{client_tty}", "#{client_pid}", "#{client_activity}",
+            "#{client_session}", "#{pane_id}", "#{client_flags}",
+        ].joined(separator: separator)
+        guard
+            let result = try? ProcessRunner.run(executable, ["-S", socket, "list-clients", "-F", format], timeout: 2),
+            result.status == 0
+        else { return [] }
+        return result.stdout
             .split(whereSeparator: \.isNewline)
             .compactMap { line in
                 let fields = String(line).components(separatedBy: separator)
-                guard fields.count == 4, fields[3] == paneID, let pid = Int(fields[1]) else { return nil }
-                return (fields[0], pid, Int(fields[2]) ?? 0)
+                guard fields.count == 6, let pid = Int(fields[1]) else { return nil }
+                guard !fields[5].contains("suspended") else { return nil }
+                return LiveClient(
+                    tty: fields[0], pid: pid, activity: Int(fields[2]) ?? 0,
+                    sessionName: fields[3], paneID: fields[4]
+                )
             }
-        return candidates.max(by: { $0.activity < $1.activity }).map { ($0.tty, $0.pid) }
+    }
+
+    /// Confirms a client is now showing the pane. `switch-client` reports success
+    /// for a client that is not displaying anything, so the jump has to look.
+    public static func isPaneOnScreen(_ target: TmuxTarget, executable: String) -> Bool {
+        liveClients(executable: executable, socket: target.socketPath).contains { $0.paneID == target.paneID }
     }
 }
 
@@ -230,54 +258,79 @@ public enum FocusInspector {
         return fields[0] == "1" && fields[1] == "1" && (Int(fields[2]) ?? 0) > 0
     }
 
-    /// A tmux client attached to the pane's session runs inside the frontmost
-    /// application. Walking the client's process chain keeps this working for
-    /// any terminal emulator and needs no automation permission.
     private static func terminalShowing(
         _ target: TmuxTarget,
         executable: String,
         isFrontmost frontmost: NSRunningApplication
     ) -> Bool {
-        guard
-            let result = try? ProcessRunner.run(
-                executable,
-                [
-                    "-S", target.socketPath, "list-clients", "-t", target.sessionID,
-                    "-F", ["#{client_pid}", "#{client_flags}"].joined(separator: separator),
-                ],
-                timeout: 1
-            ),
-            result.status == 0
-        else { return false }
+        let pids = TmuxInspector.liveClients(executable: executable, socket: target.socketPath)
+            .filter { $0.sessionName == target.sessionName }
+            .map { Int32($0.pid) }
+        return TerminalOwnership.anyProcess(pids, belongsTo: frontmost)
+    }
+}
 
-        let clientPIDs = result.stdout
-            .split(whereSeparator: \.isNewline)
-            .compactMap { line -> Int32? in
-                let fields = String(line).components(separatedBy: separator)
-                guard fields.count == 2 else { return nil }
-                // A suspended client still reports as attached but is showing
-                // nothing; tmux excludes it from session_attached too.
-                guard !fields[1].contains("suspended") else { return nil }
-                return Int32(fields[0])
-            }
-        guard !clientPIDs.isEmpty, let parents = parentProcessMap() else { return false }
-        let frontmostPID = frontmost.processIdentifier
-        return clientPIDs.contains { descends($0, from: frontmostPID, parents: parents) }
+/// Which application a terminal session is running inside.
+///
+/// Walking the tmux client's process chain answers this for any emulator and
+/// needs no automation permission, and unlike `TERM_PROGRAM` it survives tmux —
+/// tmux overwrites `TERM_PROGRAM` with its own name inside every pane, so an
+/// environment check can never see the real terminal from within a session.
+public enum TerminalOwnership {
+    public static func anyProcess(
+        _ pids: [Int32],
+        belongsTo ownerPID: Int32,
+        tree: ProcessTree? = ProcessTree.snapshot()
+    ) -> Bool {
+        guard !pids.isEmpty, let tree else { return false }
+        return pids.contains { tree.ancestors(of: $0).contains(ownerPID) }
     }
 
-    private static func descends(_ pid: Int32, from ancestor: Int32, parents: [Int32: Int32]) -> Bool {
-        var current = pid
-        // launchd is pid 1, so the chain is short; the bound only guards cycles.
-        for _ in 0..<64 {
-            if current == ancestor { return true }
-            guard let parent = parents[current], parent > 1 else { return false }
-            current = parent
+    public static func anyProcess(
+        _ pids: [Int32],
+        belongsTo application: NSRunningApplication,
+        tree: ProcessTree? = ProcessTree.snapshot()
+    ) -> Bool {
+        anyProcess(pids, belongsTo: application.processIdentifier, tree: tree)
+    }
+
+    /// The application hosting a live client for this target, if one is running.
+    public static func owningApplication(of target: TmuxTarget, executable: String) -> NSRunningApplication? {
+        let clients = TmuxInspector.liveClients(executable: executable, socket: target.socketPath)
+        guard !clients.isEmpty, let tree = ProcessTree.snapshot() else { return nil }
+        let running = NSWorkspace.shared.runningApplications
+        let byPID = Dictionary(running.map { ($0.processIdentifier, $0) }, uniquingKeysWith: { first, _ in first })
+        // Prefer a client already on the target's session, then any live client.
+        let ordered = clients.sorted { lhs, rhs in
+            (lhs.sessionName == target.sessionName ? 0 : 1) < (rhs.sessionName == target.sessionName ? 0 : 1)
         }
-        return false
+        for client in ordered {
+            for ancestor in tree.ancestors(of: Int32(client.pid)) {
+                if let application = byPID[ancestor] { return application }
+            }
+        }
+        return nil
     }
+}
 
-    private static func parentProcessMap() -> [Int32: Int32]? {
-        ProcessTree.snapshot()?.parents
+/// Brings a terminal to the front and keeps it there.
+///
+/// Clicking a notification makes macOS activate Mux Beacon, which owns no
+/// window, and that activation can land *after* ours — leaving the user staring
+/// at the app they came from while the tmux switch has already happened
+/// invisibly. Asserting the terminal repeatedly until it actually holds the
+/// front settles the race in the terminal's favour.
+public enum TerminalActivator {
+    @discardableResult
+    public static func bringToFront(_ application: NSRunningApplication, attempts: Int = 4) -> Bool {
+        for attempt in 0..<max(1, attempts) {
+            application.activate(options: [.activateAllWindows])
+            Thread.sleep(forTimeInterval: attempt == 0 ? 0.08 : 0.15)
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier {
+                return true
+            }
+        }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier
     }
 }
 
@@ -386,12 +439,28 @@ public enum EventHealthChecker {
 }
 
 public enum GhosttyInspector {
-    public static func captureFocusedTerminal(environment: [String: String]) -> GhosttyTarget? {
-        let terminalProgram = environment["TERM_PROGRAM"]?.lowercased()
+    public static func isGhostty(_ application: NSRunningApplication?) -> Bool {
+        application?.bundleIdentifier?.lowercased().contains("ghostty") == true
+            || application?.localizedName?.lowercased() == "ghostty"
+    }
+
+    public static func captureFocusedTerminal(
+        environment: [String: String],
+        tmux: TmuxTarget? = nil
+    ) -> GhosttyTarget? {
         let frontmost = NSWorkspace.shared.frontmostApplication
-        let frontmostIsGhostty = frontmost?.bundleIdentifier?.lowercased().contains("ghostty") == true
-            || frontmost?.localizedName?.lowercased() == "ghostty"
-        guard terminalProgram == "ghostty", frontmostIsGhostty else { return nil }
+        guard isGhostty(frontmost), let frontmost else { return nil }
+
+        // Inside tmux, TERM_PROGRAM reads "tmux" no matter which emulator is
+        // hosting the session, so the pane's own client has to vouch for it.
+        if let tmux, let executable = TmuxInspector.executable {
+            let pids = TmuxInspector.liveClients(executable: executable, socket: tmux.socketPath)
+                .filter { $0.paneID == tmux.paneID }
+                .map { Int32($0.pid) }
+            guard TerminalOwnership.anyProcess(pids, belongsTo: frontmost) else { return nil }
+        } else {
+            guard environment["TERM_PROGRAM"]?.lowercased() == "ghostty" else { return nil }
+        }
 
         guard let terminalID = focusedTerminalID() else { return nil }
         return GhosttyTarget(terminalID: terminalID)
@@ -439,6 +508,7 @@ public enum RoutingError: LocalizedError {
     case notInTmux
     case ambiguousClient
     case stalePane
+    case switchNotVisible
     case tmux(String)
     case ghostty(String)
 
@@ -448,6 +518,7 @@ public enum RoutingError: LocalizedError {
         case .notInTmux: "This event was not captured inside tmux."
         case .ambiguousClient: "Mux Beacon could not identify the originating tmux client."
         case .stalePane: "The captured tmux pane no longer exists."
+        case .switchNotVisible: "tmux accepted the switch but no attached client is showing the pane."
         case .tmux(let detail): "tmux could not open this target: \(detail)"
         case .ghostty(let detail): "Ghostty could not focus this terminal: \(detail)"
         }
@@ -459,7 +530,6 @@ public enum TargetRouter {
         guard !event.isDemo else { throw RoutingError.demo }
         guard let target = event.tmux else { throw RoutingError.notInTmux }
         guard let executable = TmuxInspector.executable else { throw RoutingError.tmux("tmux is not installed") }
-        guard let clientTTY = target.clientTTY, !clientTTY.isEmpty else { throw RoutingError.ambiguousClient }
 
         let check = try ProcessRunner.run(
             executable,
@@ -467,23 +537,56 @@ public enum TargetRouter {
         )
         guard check.status == 0, check.stdout == target.paneID else { throw RoutingError.stalePane }
 
-        if let ghostty = event.ghostty {
-            try GhosttyInspector.focus(terminalID: ghostty.terminalID)
-        }
+        // The stored client can be gone, suspended, or sharing its tty name with
+        // clients that are; what matters is a client that is displaying now.
+        let clients = TmuxInspector.liveClients(executable: executable, socket: target.socketPath)
+        guard !clients.isEmpty else { throw RoutingError.ambiguousClient }
+        let preferred = clients.first { $0.tty == target.clientTTY }
+            ?? clients.first { $0.sessionName == target.sessionName }
+            ?? clients[0]
 
         let switched = try ProcessRunner.run(
             executable,
-            ["-S", target.socketPath, "switch-client", "-c", clientTTY, "-t", target.paneID]
+            ["-S", target.socketPath, "switch-client", "-c", preferred.tty, "-t", target.paneID]
         )
         guard switched.status == 0 else { throw RoutingError.tmux(switched.stderr) }
-
-        if event.ghostty == nil {
-            _ = try? ProcessRunner.run("/usr/bin/open", ["-a", "Ghostty"])
+        // switch-client reports success even when it moved a client that shows
+        // the user nothing, so confirm the pane really is on screen now.
+        guard TmuxInspector.isPaneOnScreen(target, executable: executable) else {
+            throw RoutingError.switchNotVisible
         }
+
+        try focusTerminal(for: event, target: target, executable: executable)
 
         _ = try? ProcessRunner.run(
             executable,
-            ["-S", target.socketPath, "display-message", "-c", clientTTY, "-d", "900", "Mux Beacon → \(target.displayPath)"]
+            ["-S", target.socketPath, "display-message", "-c", preferred.tty, "-d", "900", "Mux Beacon → \(target.displayPath)"]
         )
+    }
+
+    /// Puts the terminal in front, whatever the user was looking at.
+    private static func focusTerminal(for event: AgentEvent, target: TmuxTarget, executable: String) throws {
+        let owner = TerminalOwnership.owningApplication(of: target, executable: executable)
+
+        // Ghostty can raise one specific window and tab; every other emulator
+        // gets app-level activation, which is all tmux needs anyway.
+        if let ghostty = event.ghostty, GhosttyInspector.isGhostty(owner) || owner == nil {
+            do {
+                try GhosttyInspector.focus(terminalID: ghostty.terminalID)
+            } catch {
+                BeaconLog.write("ghostty focus fell back to app activation: \(error.localizedDescription)")
+            }
+        }
+
+        if let owner {
+            if !TerminalActivator.bringToFront(owner) {
+                BeaconLog.write("terminal did not take focus: \(owner.localizedName ?? "unknown")")
+            }
+            return
+        }
+        let opened = try? ProcessRunner.run("/usr/bin/open", ["-a", "Ghostty"], timeout: 3)
+        if opened?.status != 0 {
+            BeaconLog.write("could not activate a terminal for \(target.displayPath)")
+        }
     }
 }
