@@ -28,6 +28,7 @@ prompt submitted → working → ready / failed
 - **Acknowledge** clears the unread state; **Mark time logged** is available in the inbox.
 - `PermissionRequest` is supported but its notification is off by default.
 - A turn reports its outcome once; a completed turn is never rewritten by a late hook.
+- No alert is sent for a pane you are already looking at.
 - Prompts, commands, and final answers are not stored unless previews are explicitly enabled.
 
 ## Requirements
@@ -97,6 +98,18 @@ Claude Code fires `Stop` in two situations: the turn is over, or the agent has p
 
 macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working, 🟣 waiting on background work), with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
 
+### Alerts for the pane you are watching
+
+There is no point announcing a turn you are already looking at, so Mux Beacon does not. An alert is skipped only when the pane can be *proved* to be on screen at the moment of delivery:
+
+- tmux reports it as the active pane, of the active window, of a session a live client is attached to — suspended clients are excluded, since they display nothing;
+- that client's process chain leads to the application macOS reports as frontmost, which keeps the check working for any terminal emulator and needs no extra permissions;
+- and when a Ghostty terminal was captured for the turn, a different Ghostty terminal being in front vetoes the skip.
+
+Anything else — no tmux target, an unreachable server, a query that times out, another app in front — notifies. Suppressing an alert you needed is worse than showing one you did not, so every uncertain path falls through to notifying. The turn still lands unread in the inbox either way; only the banner is skipped, and the decision is made once, so looking away later does not produce a late banner for work you already saw.
+
+Run `mux-beacon focus-status` to see the verdict and its reason for recent turns. Turn the behavior off with `mux-beacon notifications skip-watched off`; it is deliberately not changed by `notifications all`.
+
 Background-pause alerts are deliberately quieter than the rest: they read *Waiting on background work*, say *still running* instead of a final duration, play no sound, and use a passive interruption level so they never wake the display.
 
 Demo records are marked `DEMO` and intentionally have no live jump target. The GUI keeps sample-data controls out of the normal workflow; remove samples with `mux-beacon clear-demo`.
@@ -112,6 +125,7 @@ mux-beacon notifications status
 mux-beacon notifications start on
 mux-beacon notifications start off
 mux-beacon notifications background on
+mux-beacon notifications skip-watched off
 mux-beacon notifications all off
 ```
 
@@ -165,6 +179,7 @@ The core exposes `TimeExportProvider` and `TimeEntryDraft` so a Clockify adapter
 | `mux-beacon doctor` | Check app, hooks, tmux, Ghostty, and local storage |
 | `mux-beacon status` | Show recent activity in the terminal |
 | `mux-beacon health` | Retire superseded records and missing tmux targets |
+| `mux-beacon focus-status` | Explain which turns would skip their alert, and why |
 | `mux-beacon gui` | Open the native inbox window |
 | `mux-beacon notifications …` | Inspect or change alert preferences |
 | `mux-beacon jump-last` | Open the newest unread event |

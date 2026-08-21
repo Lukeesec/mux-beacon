@@ -11,6 +11,7 @@ public final class BeaconPreferences: @unchecked Sendable {
         static let notifyOnBackground = "notifyOnBackground"
         static let notifyOnFailure = "notifyOnFailure"
         static let notificationSound = "notificationSound"
+        static let skipWatchedSession = "skipWatchedSession"
         static let storePreviews = "storePreviews"
     }
 
@@ -25,6 +26,7 @@ public final class BeaconPreferences: @unchecked Sendable {
             Key.notifyOnBackground: false,
             Key.notifyOnFailure: true,
             Key.notificationSound: true,
+            Key.skipWatchedSession: true,
             Key.storePreviews: false,
         ])
     }
@@ -60,6 +62,13 @@ public final class BeaconPreferences: @unchecked Sendable {
     public var notificationSound: Bool {
         get { defaults.bool(forKey: Key.notificationSound) }
         set { defaults.set(newValue, forKey: Key.notificationSound) }
+    }
+
+    /// A banner for the pane already on screen is noise. On by default; every
+    /// uncertain case still notifies.
+    public var skipWatchedSession: Bool {
+        get { defaults.bool(forKey: Key.skipWatchedSession) }
+        set { defaults.set(newValue, forKey: Key.skipWatchedSession) }
     }
 
     public var storePreviews: Bool {

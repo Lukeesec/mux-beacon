@@ -12,6 +12,7 @@ struct BeaconSettingsView: View {
     @AppStorage("notifyOnBackground", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnBackground = false
     @AppStorage("notifyOnFailure", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notifyOnFailure = true
     @AppStorage("notificationSound", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var notificationSound = true
+    @AppStorage("skipWatchedSession", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var skipWatchedSession = true
     @AppStorage("storePreviews", store: UserDefaults(suiteName: BeaconPreferences.suiteName)) private var storePreviews = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String?
@@ -25,6 +26,10 @@ struct BeaconSettingsView: View {
                 Toggle("Turn failed", isOn: $notifyOnFailure)
                 Toggle("Paused for background work", isOn: $notifyOnBackground)
                 Toggle("Play sound", isOn: $notificationSound)
+                Toggle("Skip alerts for the session I am watching", isOn: $skipWatchedSession)
+                Text("On by default. An alert is skipped only when the pane is proved to be on screen — the active pane of the active window of an attached tmux session, inside the frontmost app. Anything uncertain still notifies, and the turn stays unread in the inbox either way.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("Start, permission, and background-pause alerts are off by default. Permission alerts also require mux-beacon install --apply --with-permission-events.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

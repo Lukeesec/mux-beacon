@@ -154,10 +154,18 @@ final class BeaconAppModel: ObservableObject {
             content.sound = .default
         }
 
+        let skipWatchedSession = preferences.skipWatchedSession
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { [notificationTracker] settings in
             guard [.authorized, .provisional].contains(settings.authorizationStatus) else {
                 notificationTracker.finish(ticket, delivered: false)
+                return
+            }
+            // Checked here rather than on the main actor: it shells out to tmux.
+            // The ticket stays consumed, so this is decided once — looking away
+            // later does not produce a late banner for work already seen.
+            if skipWatchedSession, FocusInspector.isWatching(event) {
+                BeaconLog.write("notification skipped, pane is on screen: \(event.id) [\(event.state.rawValue)]")
                 return
             }
             center.add(UNNotificationRequest(identifier: event.id, content: content, trigger: nil)) { error in

@@ -22,6 +22,8 @@ struct MuxBeaconCLI {
                 try status()
             case "health":
                 try health()
+            case "focus-status":
+                try focusStatus(Array(arguments.dropFirst()))
             case "test":
                 try test(Array(arguments.dropFirst()))
             case "demo":
@@ -186,6 +188,30 @@ struct MuxBeaconCLI {
         }
     }
 
+    /// Explains why a turn would or would not have been announced, so a missing
+    /// alert can be traced instead of guessed at.
+    private static func focusStatus(_ arguments: [String]) throws {
+        let store = EventStore()
+        let preferences = BeaconPreferences.shared
+        print("Skip alerts for the session I am watching: \(preferences.skipWatchedSession ? "on" : "off")")
+        let events: [AgentEvent]
+        if let id = arguments.first {
+            guard let event = try store.fetch(id: id) else { throw CLIError.usage("No event with ID \(id).") }
+            events = [event]
+        } else {
+            events = try store.fetchEvents(limit: 10).filter { $0.tmux != nil && !$0.isDemo }
+        }
+        guard !events.isEmpty else {
+            print("No tracked events with a tmux target yet.")
+            return
+        }
+        for event in events {
+            let report = FocusInspector.report(for: event)
+            let verdict = report.watching ? "would skip" : "would notify"
+            print("  \(verdict.padding(toLength: 13, withPad: " ", startingAt: 0)) \(event.projectName) — \(event.routeLabel): \(report.detail)")
+        }
+    }
+
     private static func test(_ arguments: [String]) throws {
         let stateName = arguments.first ?? "start"
         let source = AgentSource(rawValue: option("--source", in: arguments) ?? "codex") ?? .codex
@@ -305,10 +331,11 @@ struct MuxBeaconCLI {
             print("  failure:    \(preferences.notifyOnFailure ? "on" : "off")")
             print("  background: \(preferences.notifyOnBackground ? "on" : "off")")
             print("  sound:      \(preferences.notificationSound ? "on" : "off")")
+            print("  skip-watched: \(preferences.skipWatchedSession ? "on" : "off")")
             return
         }
         guard arguments.count > 1, let enabled = parseToggle(arguments[1]) else {
-            throw CLIError.usage("notifications expects <start|completion|permission|failure|background|sound|all> <on|off>")
+            throw CLIError.usage("notifications expects <start|completion|permission|failure|background|sound|skip-watched|all> <on|off>")
         }
         switch target {
         case "start": preferences.notifyOnStart = enabled
@@ -317,6 +344,7 @@ struct MuxBeaconCLI {
         case "failure", "failed": preferences.notifyOnFailure = enabled
         case "background", "paused": preferences.notifyOnBackground = enabled
         case "sound": preferences.notificationSound = enabled
+        case "skip-watched", "watched": preferences.skipWatchedSession = enabled
         case "all":
             preferences.notifyOnStart = enabled
             preferences.notifyOnReady = enabled
@@ -373,10 +401,11 @@ struct MuxBeaconCLI {
           mux-beacon doctor                  Check integrations and local state
           mux-beacon status                  List recent agent activity
           mux-beacon health                  Retire superseded or missing tmux targets
+          mux-beacon focus-status [event-id] Explain which turns would skip their alert
           mux-beacon gui                     Open the native inbox window
           mux-beacon notifications status    Show notification preferences
           mux-beacon notifications <type> on|off
-                                              Change start/completion/permission/failure/background/all
+                                              Change start/completion/permission/failure/background/skip-watched/all
           mux-beacon test <state>            Send start/ready/attention/failed test event
           mux-beacon demo                    Seed anonymized UI demo data
           mux-beacon jump-last               Open the newest unread agent
@@ -386,6 +415,9 @@ struct MuxBeaconCLI {
         Completion and failure notifications are enabled by default. Start,
         PermissionRequest, and background-pause notifications are off by default.
         A background pause means the agent is still working, not finished.
+
+        skip-watched is on by default: no alert is sent for a pane that is
+        already on screen in the frontmost app. It is not changed by "all".
         """)
     }
 }

@@ -23,6 +23,7 @@ struct MuxBeaconSelfTest {
             ("Injected prompts without a turn stay quiet", testInjectedPromptWithoutTurnQuiet),
             ("Completed turns ignore late terminal hooks", testCompletedTurnIsImmutable),
             ("Chained Codex notify is recognized", testCodexNotifyChained),
+            ("Watched-session suppression fails open", testWatchedSessionFailsOpen),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
             ("CSV escaping", testCSV),
@@ -106,6 +107,7 @@ struct MuxBeaconSelfTest {
         try expect(!preferences.notifyOnStart && preferences.notifyOnReady && !preferences.notifyOnAttention && preferences.notifyOnFailure)
         // Pausing for background work is mid-run, not a completion.
         try expect(!preferences.notifyOnBackground && !preferences.shouldNotify(for: .background))
+        try expect(preferences.skipWatchedSession)
         try expect(preferences.shouldNotify(for: .ready) && preferences.shouldNotify(for: .failed))
         preferences.notifyOnBackground = true
         try expect(preferences.shouldNotify(for: .background) && preferences.shouldNotify(for: .ready))
@@ -207,6 +209,37 @@ struct MuxBeaconSelfTest {
         ))
         try expect(duplicate.completedAt == startedAt.addingTimeInterval(100))
         try expect(try store.fetchEvents().count == 1)
+    }
+
+    private static func testWatchedSessionFailsOpen() throws {
+        let suite = "MuxBeaconSelfTest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try expect(BeaconPreferences(defaults: defaults).skipWatchedSession)
+
+        // Suppression requires proof. An event with no tmux target cannot be
+        // located on screen, and a demo record points at no live pane at all.
+        let untracked = AgentEvent(
+            id: "no-tmux", source: .claude, sessionID: "session", state: .ready,
+            hookEventName: "Stop", cwd: "/tmp", projectName: "project"
+        )
+        try expect(!FocusInspector.isWatching(untracked))
+
+        let target = TmuxTarget(
+            socketPath: "/tmp/mux-beacon-absent-socket", sessionID: "$99", sessionName: "Gone",
+            windowID: "@99", windowIndex: 9, windowName: "gone",
+            paneID: "%99", paneIndex: 0, paneTitle: "gone", panePath: "/tmp"
+        )
+        var demo = untracked
+        demo.id = "demo-watched"
+        demo.isDemo = true
+        demo.tmux = target
+        try expect(!FocusInspector.isWatching(demo))
+
+        // An unreachable tmux server must notify rather than swallow the turn.
+        var unreachable = untracked
+        unreachable.tmux = target
+        try expect(!FocusInspector.isWatching(unreachable))
     }
 
     private static func testCodexNotifyChained() throws {

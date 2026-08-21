@@ -22,6 +22,14 @@
 - Turn durations and time-entry exports cover the whole user turn again.
   Injected continuations no longer retire the real turn as superseded, so one
   prompt yields one History record instead of a chain of fragments.
+- Turns are no longer announced for a pane you are already looking at. An alert
+  is skipped only when tmux proves the pane is the active pane of the active
+  window of a session a live client is attached to, and that client's process
+  chain reaches the frontmost application; a captured Ghostty terminal can veto
+  the skip but never grant it. Every uncertain path still notifies, the record
+  stays unread in the inbox either way, and `mux-beacon focus-status` explains
+  each verdict. On by default; `mux-beacon notifications skip-watched off`
+  disables it.
 - `mux-beacon notifications background on|off` controls the new alert, and
   `doctor` recognizes a Codex `notify` slot owned by another command that
   forwards to Mux Beacon, reporting it as installed rather than missing.

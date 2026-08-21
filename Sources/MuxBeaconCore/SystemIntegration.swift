@@ -157,6 +157,140 @@ public enum TmuxPaneAvailability: Equatable, Sendable {
     case unknown
 }
 
+
+/// Decides whether the user is already looking at the pane an event belongs to.
+///
+/// Every uncertain path answers `false`. Suppressing an alert the user needed is
+/// far worse than showing one they did not, so a missing tmux target, an
+/// unreadable client list, or a query that times out all fall through to
+/// notifying.
+public struct FocusReport: Equatable, Sendable {
+    public var watching: Bool
+    /// Why, in the words a `focus-status` reader needs.
+    public var detail: String
+
+    public init(watching: Bool, detail: String) {
+        self.watching = watching
+        self.detail = detail
+    }
+}
+
+public enum FocusInspector {
+    private static let separator = "\u{1f}"
+
+    public static func isWatching(_ event: AgentEvent) -> Bool { report(for: event).watching }
+
+    public static func report(for event: AgentEvent) -> FocusReport {
+        guard !event.isDemo else { return FocusReport(watching: false, detail: "demo record") }
+        guard let target = event.tmux else {
+            return FocusReport(watching: false, detail: "captured outside tmux")
+        }
+        guard let executable = TmuxInspector.executable else {
+            return FocusReport(watching: false, detail: "tmux not found")
+        }
+        guard paneIsOnScreen(target, executable: executable) else {
+            return FocusReport(watching: false, detail: "pane is not the active pane of an attached session")
+        }
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+            return FocusReport(watching: false, detail: "no frontmost application")
+        }
+        guard terminalShowing(target, executable: executable, isFrontmost: frontmost) else {
+            let name = frontmost.localizedName ?? "another app"
+            return FocusReport(watching: false, detail: "pane is on screen but \(name) is frontmost")
+        }
+
+        // One terminal app can own several windows, each showing a different
+        // tmux session, so the process chain alone cannot tell them apart. The
+        // captured Ghostty terminal disambiguates them when Ghostty answers, and
+        // is only ever allowed to veto.
+        if let ghostty = event.ghostty,
+           frontmost.bundleIdentifier?.lowercased().contains("ghostty") == true,
+           let focused = GhosttyInspector.focusedTerminalID(),
+           focused != ghostty.terminalID {
+            return FocusReport(watching: false, detail: "a different Ghostty terminal is in front")
+        }
+        return FocusReport(watching: true, detail: "pane is on screen in \(frontmost.localizedName ?? "the frontmost app")")
+    }
+
+    /// The pane is the active pane, of the active window, of a session some
+    /// client is currently attached to.
+    private static func paneIsOnScreen(_ target: TmuxTarget, executable: String) -> Bool {
+        let format = ["#{pane_active}", "#{window_active}", "#{session_attached}"]
+            .joined(separator: separator)
+        guard
+            let result = try? ProcessRunner.run(
+                executable,
+                ["-S", target.socketPath, "display-message", "-p", "-t", target.paneID, format],
+                timeout: 1
+            ),
+            result.status == 0
+        else { return false }
+        let fields = result.stdout.components(separatedBy: separator)
+        guard fields.count == 3 else { return false }
+        return fields[0] == "1" && fields[1] == "1" && (Int(fields[2]) ?? 0) > 0
+    }
+
+    /// A tmux client attached to the pane's session runs inside the frontmost
+    /// application. Walking the client's process chain keeps this working for
+    /// any terminal emulator and needs no automation permission.
+    private static func terminalShowing(
+        _ target: TmuxTarget,
+        executable: String,
+        isFrontmost frontmost: NSRunningApplication
+    ) -> Bool {
+        guard
+            let result = try? ProcessRunner.run(
+                executable,
+                [
+                    "-S", target.socketPath, "list-clients", "-t", target.sessionID,
+                    "-F", ["#{client_pid}", "#{client_flags}"].joined(separator: separator),
+                ],
+                timeout: 1
+            ),
+            result.status == 0
+        else { return false }
+
+        let clientPIDs = result.stdout
+            .split(whereSeparator: \.isNewline)
+            .compactMap { line -> Int32? in
+                let fields = String(line).components(separatedBy: separator)
+                guard fields.count == 2 else { return nil }
+                // A suspended client still reports as attached but is showing
+                // nothing; tmux excludes it from session_attached too.
+                guard !fields[1].contains("suspended") else { return nil }
+                return Int32(fields[0])
+            }
+        guard !clientPIDs.isEmpty, let parents = parentProcessMap() else { return false }
+        let frontmostPID = frontmost.processIdentifier
+        return clientPIDs.contains { descends($0, from: frontmostPID, parents: parents) }
+    }
+
+    private static func descends(_ pid: Int32, from ancestor: Int32, parents: [Int32: Int32]) -> Bool {
+        var current = pid
+        // launchd is pid 1, so the chain is short; the bound only guards cycles.
+        for _ in 0..<64 {
+            if current == ancestor { return true }
+            guard let parent = parents[current], parent > 1 else { return false }
+            current = parent
+        }
+        return false
+    }
+
+    private static func parentProcessMap() -> [Int32: Int32]? {
+        guard
+            let result = try? ProcessRunner.run("/bin/ps", ["-axo", "pid=,ppid="], timeout: 1),
+            result.status == 0
+        else { return nil }
+        var parents: [Int32: Int32] = [:]
+        for line in result.stdout.split(whereSeparator: \.isNewline) {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            guard fields.count == 2, let pid = Int32(fields[0]), let parent = Int32(fields[1]) else { continue }
+            parents[pid] = parent
+        }
+        return parents.isEmpty ? nil : parents
+    }
+}
+
 public struct EventHealthReport: Equatable, Sendable {
     public var superseded: Int
     public var missingTargets: Int
@@ -201,6 +335,13 @@ public enum GhosttyInspector {
             || frontmost?.localizedName?.lowercased() == "ghostty"
         guard terminalProgram == "ghostty", frontmostIsGhostty else { return nil }
 
+        guard let terminalID = focusedTerminalID() else { return nil }
+        return GhosttyTarget(terminalID: terminalID)
+    }
+
+    /// The terminal Ghostty is showing right now, independent of which app is
+    /// frontmost. Returns nil whenever Ghostty cannot be asked.
+    public static func focusedTerminalID() -> String? {
         let script = """
         tell application "Ghostty"
             set targetTerminal to focused terminal of selected tab of front window
@@ -212,7 +353,7 @@ public enum GhosttyInspector {
             result.status == 0,
             !result.stdout.isEmpty
         else { return nil }
-        return GhosttyTarget(terminalID: result.stdout)
+        return result.stdout
     }
 
     public static func focus(terminalID: String) throws {
