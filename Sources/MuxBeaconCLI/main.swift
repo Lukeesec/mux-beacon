@@ -156,7 +156,8 @@ struct MuxBeaconCLI {
         }
         for event in events {
             let unread = event.acknowledged ? " " : "•"
-            print("\(unread) \(event.source.displayName.padding(toLength: 7, withPad: " ", startingAt: 0)) \(event.state.displayName.padding(toLength: 16, withPad: " ", startingAt: 0)) \(event.durationLabel.padding(toLength: 8, withPad: " ", startingAt: 0)) \(event.projectName) — \(event.routeLabel)")
+            let window = event.timeRangeLabel.padding(toLength: 14, withPad: " ", startingAt: 0)
+            print("\(unread) \(event.source.displayName.padding(toLength: 7, withPad: " ", startingAt: 0)) \(event.state.displayName.padding(toLength: 16, withPad: " ", startingAt: 0)) \(window) \(event.durationLabel.padding(toLength: 8, withPad: " ", startingAt: 0)) \(event.projectName) — \(event.routeLabel)")
         }
     }
 
@@ -371,7 +372,7 @@ struct MuxBeaconCLI {
         for (index, event) in events.enumerated() {
             let marker = event.acknowledged ? " " : "●"
             print("  \(String(format: "%2d", index + 1))  \(marker) \(event.source.displayName.padding(toLength: 7, withPad: " ", startingAt: 0)) \(event.state.displayName.padding(toLength: 16, withPad: " ", startingAt: 0)) \(event.projectName)")
-            print("      \(event.routeLabel) · \(event.durationLabel)")
+            print("      \(event.routeLabel) · \(event.timeRangeLabel) · \(event.durationLabel)")
         }
         print("\n  Enter a number to open, or press Return to close: ", terminator: "")
         guard let input = readLine(), let choice = Int(input), events.indices.contains(choice - 1) else { return }

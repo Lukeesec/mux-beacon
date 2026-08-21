@@ -135,10 +135,15 @@ final class BeaconAppModel: ObservableObject {
         case .stale: return
         }
         content.title = "\(event.state.notificationGlyph) \(event.projectName) — \(stateLabel)"
+        // The clock times matter as much as the elapsed total: "19m" does not
+        // tell you which 19 minutes to log.
         switch event.state {
-        case .working: content.subtitle = event.source.displayName
-        case .background: content.subtitle = "\(event.source.displayName) · still running · \(event.durationLabel)"
-        default: content.subtitle = "\(event.source.displayName) · \(event.durationLabel)"
+        case .working:
+            content.subtitle = "\(event.source.displayName) · started \(ClockFormatter.time(event.startedAt))"
+        case .background:
+            content.subtitle = "\(event.source.displayName) · \(event.timeRangeLabel) · still running · \(event.durationLabel)"
+        default:
+            content.subtitle = "\(event.source.displayName) · \(event.timeRangeLabel) · \(event.durationLabel)"
         }
         content.body = preferences.storePreviews
             ? [event.routeLabel, event.preview].compactMap { $0 }.joined(separator: "\n")

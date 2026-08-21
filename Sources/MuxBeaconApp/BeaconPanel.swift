@@ -187,7 +187,7 @@ private struct EventRow: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                         Spacer()
-                        Text(event.durationLabel)
+                        Text("\(event.timeRangeLabel) · \(event.durationLabel)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
@@ -215,7 +215,7 @@ private struct EventRow: View {
             Divider()
             Text(event.id)
         }
-        .accessibilityLabel("\(event.source.displayName), \(event.projectName), \(event.state.displayName), \(event.durationLabel)")
+        .accessibilityLabel("\(event.source.displayName), \(event.projectName), \(event.state.displayName), \(event.timeRangeLabel), \(event.durationLabel)")
     }
 
     private var isActionable: Bool {

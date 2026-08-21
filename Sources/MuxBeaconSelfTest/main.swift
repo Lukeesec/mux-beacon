@@ -11,6 +11,7 @@ struct MuxBeaconSelfTest {
             ("Claude prompt origin distinguishes injected turns", testPromptOrigin),
             ("Start, permission, and background notifications default off", testNotificationDefaults),
             ("Routes emphasize session and window", testRouteLabel),
+            ("Turn labels carry clock times, not dates", testTimeRangeLabel),
             ("Badge format avoids conditional separator collisions", testBadgeFormat),
             ("Notification glyphs match the badge palette", testNotificationGlyphs),
             ("Superseded pane sessions retire", testSessionReconciliation),
@@ -361,6 +362,28 @@ struct MuxBeaconSelfTest {
         } catch RoutingError.demo {
             // Demo events must never attempt live tmux navigation.
         }
+    }
+
+    private static func testTimeRangeLabel() throws {
+        let started = Date(timeIntervalSince1970: 1_787_320_985)
+        var event = AgentEvent(
+            id: "range", source: .claude, sessionID: "session", state: .ready,
+            hookEventName: "Stop", cwd: "/tmp", projectName: "project",
+            startedAt: started, updatedAt: started.addingTimeInterval(1_144),
+            completedAt: started.addingTimeInterval(1_144)
+        )
+        let label = event.timeRangeLabel
+        try expect(label.contains("–") && label == "\(ClockFormatter.time(started))–\(ClockFormatter.time(started.addingTimeInterval(1_144)))")
+        // Time of day only: a date would crowd the notification and the turn
+        // being announced happened today.
+        let calendar = Calendar.current
+        let year = String(calendar.component(.year, from: started))
+        try expect(!label.contains(year) && !label.contains("/"))
+        try expect(event.durationLabel == "19m 4s")
+
+        // A turn still running has no end yet.
+        event.completedAt = nil
+        try expect(event.timeRangeLabel == "from \(ClockFormatter.time(started))")
     }
 
     private static func testNotificationGlyphs() throws {

@@ -22,6 +22,10 @@
 - Turn durations and time-entry exports cover the whole user turn again.
   Injected continuations no longer retire the real turn as superseded, so one
   prompt yields one History record instead of a chain of fragments.
+- Notifications, the inbox, and `mux-beacon status` now show the clock times a
+  turn ran between, not just how long it took: "19m" does not tell you which
+  nineteen minutes to log. Times use the system 12- or 24-hour format and omit
+  the date; a turn still running shows its start alone.
 - An agent started by another agent no longer notifies, and no longer evicts the
   turn that spawned it. A `claude -p` or `codex exec` issued from inside another
   agent's tool call shares that agent's tmux pane, so it was both announcing

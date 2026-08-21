@@ -268,6 +268,15 @@ public struct AgentEvent: Codable, Identifiable, Equatable, Sendable {
         DurationFormatter.compact(duration)
     }
 
+    /// Clock times for the turn, without a date — a turn that is worth
+    /// announcing happened today, and the date only crowds the notification.
+    /// A turn still running shows its start alone.
+    public var timeRangeLabel: String {
+        let start = ClockFormatter.time(startedAt)
+        guard let completedAt else { return "from \(start)" }
+        return "\(start)–\(ClockFormatter.time(completedAt))"
+    }
+
     public var routeLabel: String {
         guard let tmux else { return "Outside tmux" }
         return isDemo ? "\(tmux.displayPath) · demo" : tmux.displayPath
@@ -378,6 +387,22 @@ public protocol TimeExportProvider: Sendable {
     var identifier: String { get }
     func validateConfiguration() async throws
     func export(_ entries: [TimeEntryDraft]) async throws -> [TimeExportResult]
+}
+
+/// Wall-clock time of day, in the user's own 12- or 24-hour preference.
+public enum ClockFormatter {
+    // DateFormatter is documented as thread-safe for formatting, and rebuilding
+    // one per notification is needless work.
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    public static func time(_ date: Date) -> String {
+        formatter.string(from: date)
+    }
 }
 
 public enum DurationFormatter {

@@ -101,7 +101,7 @@ Claude Code fires `Stop` in two situations: the turn is over, or the agent has p
 
 ![Example Mux Beacon notification showing project, state, agent, duration, tmux target, Open in Ghostty, and Acknowledge](docs/assets/notification-preview.svg)
 
-macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working, 🟣 waiting on background work), with agent and duration beneath it and the tmux route in the body. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
+macOS renders the project and state as the bold title, led by a color dot that mirrors the tmux badge palette (🟢 ready, 🔴 failed, 🟡 attention, 🔵 working, 🟣 waiting on background work), with the agent, the clock times the turn ran between, and its duration beneath it, and the tmux route in the body. Elapsed time alone does not tell you *which* twenty minutes to log, so the start and end times are shown in your own 12- or 24-hour format; the date is left out because a turn worth announcing happened today. A turn still running shows `from 14:03` in place of a range. The same window appears in the inbox and in `mux-beacon status`, and `mux-beacon export` carries full ISO timestamps. It controls final layout, truncation, persistence, and Focus/DND delivery. Routing details live in hidden notification metadata as an opaque event ID.
 
 ### Alerts for the pane you are watching
 
