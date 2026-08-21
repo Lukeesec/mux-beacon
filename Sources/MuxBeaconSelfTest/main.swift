@@ -24,6 +24,7 @@ struct MuxBeaconSelfTest {
             ("Completed turns ignore late terminal hooks", testCompletedTurnIsImmutable),
             ("Chained Codex notify is recognized", testCodexNotifyChained),
             ("Watched-session suppression fails open", testWatchedSessionFailsOpen),
+            ("Agent-spawned runs stay quiet and keep the parent turn", testNestedAgentRun),
             ("Additive idempotent installer", testInstaller),
             ("Malformed hook config rejected", testMalformedHookConfig),
             ("CSV escaping", testCSV),
@@ -209,6 +210,75 @@ struct MuxBeaconSelfTest {
         ))
         try expect(duplicate.completedAt == startedAt.addingTimeInterval(100))
         try expect(try store.fetchEvents().count == 1)
+    }
+
+    private static func testNestedAgentRun() throws {
+        // A top-level agent has one agent in its chain; one started by another
+        // agent has two. An unreadable process tree must not silence anything.
+        let hook: Int32 = 10, shell: Int32 = 9, inner: Int32 = 8
+        let toolShell: Int32 = 7, outer: Int32 = 6, login: Int32 = 5, tmux: Int32 = 1
+        let nested = ProcessTree(
+            parents: [hook: shell, shell: inner, inner: toolShell, toolShell: outer, outer: login, login: tmux],
+            commands: [
+                hook: "/Applications/Mux Beacon.app/Contents/Helpers/mux-beacon", shell: "/bin/sh",
+                inner: "claude", toolShell: "/bin/zsh", outer: "claude", login: "-zsh", tmux: "tmux",
+            ]
+        )
+        try expect(AgentAncestry.isNestedRun(pid: hook, tree: nested))
+
+        let topLevel = ProcessTree(
+            parents: [hook: shell, shell: outer, outer: login, login: tmux],
+            commands: [
+                hook: "/Applications/Mux Beacon.app/Contents/Helpers/mux-beacon", shell: "/bin/sh",
+                outer: "claude", login: "-zsh", tmux: "tmux",
+            ]
+        )
+        try expect(!AgentAncestry.isNestedRun(pid: hook, tree: topLevel))
+
+        // Codex started from a Claude tool call counts too.
+        let crossAgent = ProcessTree(
+            parents: [hook: shell, shell: inner, inner: toolShell, toolShell: outer, outer: login],
+            commands: [
+                hook: "mux-beacon", shell: "/bin/sh", inner: "codex",
+                toolShell: "/bin/zsh", outer: "claude", login: "-zsh",
+            ]
+        )
+        try expect(AgentAncestry.isNestedRun(pid: hook, tree: crossAgent))
+        try expect(!AgentAncestry.isNestedRun(pid: hook, tree: nil))
+
+        // A nested run records its turn quietly and, crucially, does not retire
+        // the turn of the agent that spawned it from the shared tmux pane.
+        let (directory, store) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = TmuxTarget(
+            socketPath: "/tmp/tmux", sessionID: "$1", sessionName: "Vigil",
+            windowID: "@1", windowIndex: 1, windowName: "claude",
+            paneID: "%935", paneIndex: 0, paneTitle: "claude", panePath: "/tmp"
+        )
+        let startedAt = Date(timeIntervalSince1970: 5_000)
+        let parent = try store.record(IncomingAgentEvent(
+            source: .claude, sessionID: "outer", turnID: "outer-turn", hookEventName: "UserPromptSubmit",
+            cwd: "/Users/demo/repos/atlas", model: nil, state: .working, timestamp: startedAt,
+            promptOrigin: .user, tmux: target
+        ))
+        let child = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "inner", turnID: "inner-turn", hookEventName: "UserPromptSubmit",
+            cwd: "/private/tmp/claude-501/outer/scratchpad", model: nil, state: .working,
+            timestamp: startedAt.addingTimeInterval(58), spawnedByAgent: true, tmux: target
+        ))
+        try expect(child.id != parent.id && child.acknowledged && child.projectName == "scratchpad")
+        try expect(try store.fetch(id: parent.id)?.state == .working)
+        try expect(try store.fetch(id: parent.id)?.acknowledged == false)
+
+        let childStop = try store.record(IncomingAgentEvent(
+            source: .codex, sessionID: "inner", turnID: "inner-turn", hookEventName: "Stop",
+            cwd: "/private/tmp/claude-501/outer/scratchpad", model: nil, state: .ready,
+            timestamp: startedAt.addingTimeInterval(60), spawnedByAgent: true, tmux: target
+        ))
+        try expect(childStop.state == .ready && childStop.acknowledged)
+        // The turn the user is actually waiting on is still live and still unread.
+        try expect(try store.fetch(id: parent.id)?.state == .working)
+        try expect(try store.activeEvent(source: .claude, sessionID: "outer") != nil)
     }
 
     private static func testWatchedSessionFailsOpen() throws {

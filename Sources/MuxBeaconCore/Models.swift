@@ -287,14 +287,19 @@ public struct IncomingAgentEvent: Sendable {
     public var hasBackgroundWork: Bool
     public var promptOrigin: PromptOrigin
     public var agentID: String?
+    /// This agent was started by another agent rather than by the user.
+    public var spawnedByAgent: Bool
     public var isDemo: Bool
     public var tmux: TmuxTarget?
     public var ghostty: GhosttyTarget?
 
     /// True when this event may open a new tracked turn. Machine-injected
     /// prompts and hooks fired from inside a subagent continue the turn that is
-    /// already in flight instead.
-    public var startsTrackedTurn: Bool { promptOrigin.startsUserTurn && agentID == nil }
+    /// already in flight instead, and an agent another agent started belongs to
+    /// that agent's turn rather than to one of its own.
+    public var startsTrackedTurn: Bool {
+        promptOrigin.startsUserTurn && agentID == nil && !spawnedByAgent
+    }
 
     public init(
         source: AgentSource,
@@ -309,6 +314,7 @@ public struct IncomingAgentEvent: Sendable {
         hasBackgroundWork: Bool = false,
         promptOrigin: PromptOrigin = .unknown,
         agentID: String? = nil,
+        spawnedByAgent: Bool = false,
         isDemo: Bool = false,
         tmux: TmuxTarget? = nil,
         ghostty: GhosttyTarget? = nil
@@ -325,6 +331,7 @@ public struct IncomingAgentEvent: Sendable {
         self.hasBackgroundWork = hasBackgroundWork
         self.promptOrigin = promptOrigin
         self.agentID = agentID
+        self.spawnedByAgent = spawnedByAgent
         self.isDemo = isDemo
         self.tmux = tmux
         self.ghostty = ghostty

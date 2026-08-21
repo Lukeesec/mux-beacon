@@ -17,7 +17,8 @@ public enum HookNormalizer {
         source: AgentSource,
         data: Data,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        now: Date = Date()
+        now: Date = Date(),
+        spawnedByAgent: Bool = AgentAncestry.isNestedRun()
     ) throws -> IncomingAgentEvent {
         guard
             let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -78,6 +79,7 @@ public enum HookNormalizer {
             hasBackgroundWork: hasBackground,
             promptOrigin: promptOrigin,
             agentID: agentID,
+            spawnedByAgent: spawnedByAgent,
             tmux: TmuxInspector.capture(environment: environment),
             ghostty: shouldCaptureOrigin ? GhosttyInspector.captureFocusedTerminal(environment: environment) : nil
         )
@@ -86,7 +88,8 @@ public enum HookNormalizer {
     public static func parseCodexNotification(
         data: Data,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        now: Date = Date()
+        now: Date = Date(),
+        spawnedByAgent: Bool = AgentAncestry.isNestedRun()
     ) throws -> IncomingAgentEvent {
         guard
             let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -108,6 +111,7 @@ public enum HookNormalizer {
             state: .ready,
             timestamp: now,
             preview: object.string("last-assistant-message")?.firstLine(limit: 180),
+            spawnedByAgent: spawnedByAgent,
             tmux: TmuxInspector.capture(environment: environment)
         )
     }

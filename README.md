@@ -22,6 +22,9 @@ prompt submitted → working → ready / failed
   notifications from background subagents, auto-continuation, loop and schedule
   wake-ups — continue that turn instead of starting a new one, so one turn
   produces one alert and one duration.
+- An agent another agent started (`claude -p` or `codex exec` from a tool call)
+  is that agent's business: recorded quietly, and never allowed to take the
+  tmux pane from the turn that spawned it.
 - `UserPromptSubmit` records the start immediately; its notification is opt-in to avoid noise.
 - Completion and failure notifications contain agent, project, duration, and `session › window`.
 - Clicking **Open in Ghostty** targets the originating tmux client and focuses the captured Ghostty terminal.
@@ -89,6 +92,8 @@ mux-beacon status
 The app and demo require no tmux restart. Hooks may require a new or reloaded agent process.
 
 Mux Beacon is hook-driven rather than a process scanner. It begins tracking an agent when a hook-enabled prompt is submitted; it cannot reconstruct turns that were already running before installation. Merely launching Claude or Codex does not produce a start event. Completions from sessions Mux Beacon never saw a prompt for — such as Codex automation or background task turns — are recorded quietly under History and do not notify.
+
+Agents shell out to other agents. A `claude -p` or `codex exec` you run yourself is a turn like any other and notifies normally, but one started from inside another agent's tool call is not something you are waiting on — and because it lands in the same tmux pane, tracking it as a turn of its own would evict the turn that spawned it. Mux Beacon separates the two by walking the process tree: a top-level agent has one agent CLI above its hook, a nested one has two. Nested runs are recorded quietly and leave the incumbent turn alone. If the process tree cannot be read, the run is treated as top-level and notifies as before.
 
 Claude Code fires `Stop` in two situations: the turn is over, or the agent has parked itself waiting on background work it registered. Mux Beacon reads the hook's `background_tasks` field to tell them apart. Only a real completion notifies by default; the paused state is a separate, opt-in alert.
 

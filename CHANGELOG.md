@@ -22,6 +22,15 @@
 - Turn durations and time-entry exports cover the whole user turn again.
   Injected continuations no longer retire the real turn as superseded, so one
   prompt yields one History record instead of a chain of fragments.
+- An agent started by another agent no longer notifies, and no longer evicts the
+  turn that spawned it. A `claude -p` or `codex exec` issued from inside another
+  agent's tool call shares that agent's tmux pane, so it was both announcing
+  itself as a finished turn — labelled after whatever directory it had been
+  given, typically `scratchpad` — and retiring the real turn as superseded, so
+  the turn the user was actually waiting on was silently marked read and never
+  notified. Nested runs are now detected by process ancestry, recorded quietly,
+  and leave the incumbent turn alone. A headless agent you launch yourself still
+  notifies, and an unreadable process tree is treated as top-level.
 - Turns are no longer announced for a pane you are already looking at. An alert
   is skipped only when tmux proves the pane is the active pane of the active
   window of a session a live client is attached to, and that client's process

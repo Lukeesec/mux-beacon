@@ -277,17 +277,75 @@ public enum FocusInspector {
     }
 
     private static func parentProcessMap() -> [Int32: Int32]? {
+        ProcessTree.snapshot()?.parents
+    }
+}
+
+/// One `ps` sweep, shared by the callers that need to walk process ancestry.
+public struct ProcessTree: Sendable {
+    public var parents: [Int32: Int32]
+    public var commands: [Int32: String]
+
+    public init(parents: [Int32: Int32], commands: [Int32: String]) {
+        self.parents = parents
+        self.commands = commands
+    }
+
+    public static func snapshot() -> ProcessTree? {
         guard
-            let result = try? ProcessRunner.run("/bin/ps", ["-axo", "pid=,ppid="], timeout: 1),
+            let result = try? ProcessRunner.run("/bin/ps", ["-axo", "pid=,ppid=,comm="], timeout: 1),
             result.status == 0
         else { return nil }
         var parents: [Int32: Int32] = [:]
+        var commands: [Int32: String] = [:]
         for line in result.stdout.split(whereSeparator: \.isNewline) {
-            let fields = line.split(whereSeparator: \.isWhitespace)
-            guard fields.count == 2, let pid = Int32(fields[0]), let parent = Int32(fields[1]) else { continue }
+            let fields = String(line).split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard fields.count == 3, let pid = Int32(fields[0]), let parent = Int32(fields[1]) else { continue }
             parents[pid] = parent
+            commands[pid] = String(fields[2])
         }
-        return parents.isEmpty ? nil : parents
+        return parents.isEmpty ? nil : ProcessTree(parents: parents, commands: commands)
+    }
+
+    /// Executable name, with the login shell's leading dash removed.
+    public func executableName(of pid: Int32) -> String? {
+        guard let command = commands[pid] else { return nil }
+        let name = (command as NSString).lastPathComponent
+        return name.hasPrefix("-") ? String(name.dropFirst()) : name
+    }
+
+    public func ancestors(of pid: Int32) -> [Int32] {
+        var chain: [Int32] = []
+        var current = pid
+        // The chain ends at launchd; the bound only guards against cycles.
+        for _ in 0..<64 {
+            chain.append(current)
+            guard let parent = parents[current], parent > 1 else { break }
+            current = parent
+        }
+        return chain
+    }
+}
+
+/// Agents shell out to other agents. A `claude -p` or `codex exec` started by
+/// another agent is that agent's business, not a turn its user is waiting on —
+/// and it must never evict the turn that spawned it from its tmux pane.
+public enum AgentAncestry {
+    /// The hook firing this process already has an agent CLI above it in the
+    /// process tree, beyond the one that fired the hook.
+    ///
+    /// A top-level agent's chain is `hook → shell → claude → shell → tmux`, one
+    /// agent. A nested one adds the agent that spawned it, so two or more means
+    /// this run belongs to another agent. Any failure answers `false`, leaving
+    /// the run to notify as it did before.
+    public static func isNestedRun(
+        pid: Int32 = ProcessInfo.processInfo.processIdentifier,
+        tree: ProcessTree? = ProcessTree.snapshot()
+    ) -> Bool {
+        guard let tree else { return false }
+        let agentNames = Set(AgentSource.allCases.map(\.rawValue))
+        let agents = tree.ancestors(of: pid).filter { agentNames.contains(tree.executableName(of: $0) ?? "") }
+        return agents.count >= 2
     }
 }
 
